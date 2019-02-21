@@ -1,0 +1,13 @@
+sample,BinarySearch.java,6,17,sample,BinarySearch.java,19,30,3.8366888376884987
+sample,BinarySearch.java,32,46,sample,BinarySearch.java,48,61,2.4543495398084385
+sample,ConnectToDatabaseJDBC.java,8,20,sample,ConnectToDatabaseJDBC.java,21,26,1.019354658003004
+sample,ConnectToDatabaseJDBC.java,21,26,sample,ResizeObjectArray.java,2,14,4.1522086326550305
+sample,CopyFileSamples.java,18,36,sample,CreateRSAKeys.java,34,54,4.405443905948945
+sample,CopyFileSamples.java,18,36,sample,WritePDF.java,14,29,2.3454710824016574
+sample,CRC32FileChecksum.java,11,20,sample,ExtactUsingRegex.java,9,17,4.356114811610344
+sample,CRC32FileChecksum.java,11,20,sample,WritePDF.java,14,29,3.7578127543229427
+sample,CreateRSAKeys.java,34,54,sample,WritePDF.java,14,29,4.318351488651419
+sample,DBUpdateAndRollback.java,10,29,sample,DBUpdateAndRollback.java,31,50,1.9715785134861925
+sample,DBUpdateAndRollback.java,10,29,sample,WritePDF.java,14,29,3.788816249730868
+sample,DBUpdateAndRollback.java,31,50,sample,ParseXML2Dom.java,17,34,4.408099743331695
+sample,DBUpdateAndRollback.java,31,50,sample,WritePDF.java,14,29,3.674984235265765

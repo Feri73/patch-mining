@@ -3,6 +3,7 @@ package AST;
 import Utils.StyledPrinter;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 // test all functions separately
@@ -21,6 +22,7 @@ public class Node {
     // use this in getPenalty :|
     // maybe instead of this I can have the score for matching every two variable and use that in getPenalty(in this case, i may want to divide the score for matching every two variable(computed using GetVarVarMap) by the length of matching or sequences or ... (think about it))
     public static HashMap<String, String> variableMatchings;
+    public static boolean diffMode = false;
 
     // defined better features (e.g. no i do not have any good feature representing what a block does)
     public Type type;
@@ -59,6 +61,19 @@ public class Node {
         return children.stream().filter(x -> x.edgeLabel == edgeLabel).map(x -> x.child).collect(Collectors.toList());
     }
 
+    public int count() {
+        int res = 0;
+        for (ChildRelation relation : children)
+            res += relation.child.count();
+        return res + 1;
+    }
+
+    public void applyOnAll(Consumer<Node> func) {
+        func.accept(this);
+        for (ChildRelation childRelation : children)
+            childRelation.child.applyOnAll(func);
+    }
+
     private String styled(String txt) {
         return StyledPrinter.applyStyle(styleCode, txt);
     }
@@ -66,6 +81,12 @@ public class Node {
     public String toStyledString(String linePrefix) {
         switch (label) {
             case Branch:
+                String res = linePrefix + styled(value + "(") + getChildren(EdgeLabel.Condition).get(0).toStyledString("") + styled(")\n") +
+                        getChildren(EdgeLabel.Block).get(0).toStyledString(linePrefix);
+                if (getChildren(EdgeLabel.Block).size() > 1)
+                    res += styled("\n") + linePrefix + styled("else") + styled("\n") +
+                            getChildren(EdgeLabel.Block).get(1).toStyledString(linePrefix);
+                return res;
             case Loop:
                 return linePrefix + styled(value + "(") + getChildren(EdgeLabel.Condition).get(0).toStyledString("") + styled(")\n") +
                         getChildren(EdgeLabel.Block).get(0).toStyledString(linePrefix);
@@ -147,6 +168,38 @@ public class Node {
                 }
             });
         return paths;
+    }
+
+    // test it
+    public HashMap<Node, List<PathElement>> getLeadingPaths() {
+        HashMap<Node, List<PathElement>> result = new HashMap<>();
+
+        EnumMap<ValueSource, Integer> sourcesCounts = aggregate();
+
+        for (ChildRelation relation : children) {
+            EnumSet<ValueSource> sources = EnumSet.noneOf(ValueSource.class);
+            for (ValueSource source : sourcesCounts.keySet())
+                if (sourcesCounts.get(source) - (relation.child.sources.contains(source) ? 1 : 0) > 0)
+                    sources.add(source);
+
+            HashMap<Node, List<PathElement>> leadingPaths = relation.child.getLeadingPaths();
+            for (Node node : leadingPaths.keySet()) {
+                leadingPaths.get(node).add(0, new PathElement(this, relation.edgeLabel, sources));
+                result.put(node, leadingPaths.get(node));
+            }
+        }
+
+        result.put(this, new ArrayList<>() {
+
+            private static final long serialVersionUID = -5583912680427139109L;
+
+            {
+                // i used to put valueSources=sources. but now i do not because valueSources belongs to the subtree that is not in the path.
+                add(new PathElement(Node.this, null, EnumSet.noneOf(ValueSource.class)));
+            }
+        });
+
+        return result;
     }
 
     // how can i create (learn) this function automatically? (or at least iterate on them and find the best values)
@@ -444,16 +497,22 @@ public class Node {
                 res *= .1;
             if (elem1.node.type != elem2.node.type)
                 res *= .9;
+            // should i keep it or not? (i think i should keep it and add more info to it, or keep it in clone detection and remove it in diff detection)
             res *= sourcesSimilarity(elem1.node.sources, elem2.node.sources) * .5 + .5; // this creates path-long correlation between elements matching score because we have both the in-the-path child source (next element) and the off-the-path sources (see the next line) which together create this. BUT solving it is not simple because a variable may be matched to an operator and in this case te node.sources of the two should be compared (and note, variable does not have valueSources because it is a leaf)
             res *= sourcesSimilarity(elem1.valueSources, elem2.valueSources) * .6 + .4;
 
             // should i check values of other kinds of labels?
+
+            // this should be scrutinized and checked carefully
+            if (diffMode && elem1.node.value != null && !elem1.node.value.equals(elem2.node.value))
+                res *= .3;
 
             // i should explicityly check that elem1 and elem2 are valid (variable and input)
             if (variableMatchings != null && elem1.node.label == NodeLabel.Value && elem2.node.label == NodeLabel.Value
                     && (!elem1.node.sources.equals(EnumSet.of(ValueSource.Literal))
                     || !elem2.node.sources.equals(EnumSet.of(ValueSource.Literal))))
                 if (variableMatchings.getOrDefault(elem1.node.value, "").equals(elem2.node.value))
+                    // this is important. because now i use "child"edgelabel, here childedgelabel is null and does not affect this. but if i use edgelabel (of the very node) then i should check the labels after this line because two "i"s if(i) and i=4 shoud not be matched with score 1!
                     res = 1;
                 else
                     res *= .01; // is it good or should it be calculated?
@@ -483,6 +542,15 @@ public class Node {
             if (children.get(i).edgeLabel != p2.children.get(i).edgeLabel || !children.get(i).child.subtreeEquals(p2.children.get(i).child))
                 return false;
         return true;
+    }
+
+    public void replaceSubtree(Node patternNode, Node newNode) {
+        for (ChildRelation relation : children) {
+            if (relation.child.subtreeEquals(patternNode))
+                relation.child = newNode;
+            else
+                relation.child.replaceSubtree(patternNode, newNode);
+        }
     }
 
     // make each one a different class

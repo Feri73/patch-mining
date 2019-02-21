@@ -55,8 +55,26 @@ public class NodeConverter {
         else if (element instanceof CtConstructorCall<?>)
             return Collections.singletonList(elementConstructorCall((CtConstructorCall<?>) element));
 
+            // these should be reconsidered
         else if (element instanceof CtVariableAccess<?>)
             return element(((CtVariableAccess<?>) element).getVariable());
+        else if (element instanceof CtTry) {
+            List<Node> result = new ArrayList<>();
+            CtTry tryElement = (CtTry) element;
+            result.add(element(tryElement.getBody()).get(0));
+            for (CtCatch catcher : tryElement.getCatchers())
+                result.add(element(catcher.getBody()).get(0));
+            if (tryElement.getFinalizer() != null)
+                result.add(element(tryElement.getFinalizer()).get(0));
+            if (element instanceof CtTryWithResource)
+                for (CtLocalVariable<?> localVariable : ((CtTryWithResource) element).getResources())
+                    result.add(0, element(localVariable).get(0));
+            return result;
+        } else if (element instanceof CtReturn<?>) {
+            Node assigner = element(((CtReturn<?>) element).getReturnedExpression()).get(0);
+            Node assignee = new Node(Node.NodeLabel.Value, "<ret>", EnumSet.of(Node.ValueSource.Input), assigner.type);
+            return Collections.singletonList(createAssignment(assigner, assignee));
+        }
 
         return new ArrayList<>();
 //        throw new UnsupportedOperationException(element.getClass().getSimpleName());
@@ -71,6 +89,7 @@ public class NodeConverter {
         Node caller = null;
 
         if (invocationElement.getTarget() instanceof CtTypeAccess<?>) {
+            // getType gives void here. DO something for it :|
             value = invocationElement.getTarget().getType().getSimpleName() + '.' + invocationElement.getExecutable().getSimpleName();
             label = Node.NodeLabel.ClassMethodCall;
         } else if (invocationElement.getTarget() instanceof CtExpression<?>) {

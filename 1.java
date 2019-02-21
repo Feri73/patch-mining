@@ -1,9 +1,10 @@
 ﻿class Clazz {
     private void main() {
-        if (i == j) {
+        int u;
+        if (i == j & 5) {
             i = i + 2;
-            a = 2;
-            i = func(j);
+            a = u;
+            i = funcs(j);
         }
     }
 }
