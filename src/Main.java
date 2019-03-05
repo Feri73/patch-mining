@@ -54,7 +54,7 @@ public class Main {
                     SequenceDistanceCalculator.Matching<Node.PathElement> matching = SequenceDistanceCalculator.calculate(
                             firstPath.subList(0, firstPath.size() - 1), secondPath.subList(0, secondPath.size() - 1),
                             Node::getPenalty);
-                    // is 1/l the best option i have (e.g. think about why we do not average the sequence elements alignment scores and instead add them? does it mean that we do not need length normalization at all here?). also shouldn't i add 1/l in sequence alignment algorithm instead of here?
+                    // is 1/l the best option i have (e.g. think about why we do not average the sequence elements alignment scores and instead selfAdd them? does it mean that we do not need length normalization at all here?). also shouldn't i selfAdd 1/l in sequence alignment algorithm instead of here?
                     double score = matching.score + 1.0 / Double.max(firstPath.size(), secondPath.size())
                             + Node.getPenalty(firstLast, secondLast);
                     HashMap<String, Double> firstVarMap = firstPathVarMap.get(firstPath);
@@ -235,7 +235,7 @@ public class Main {
                         }
                     }
 
-//                    List<Node> sib2 = addAction.toAnchor.children.stream().map(x -> x.child).collect(Collectors.toList());
+//                    List<Node> sib2 = addAction.toAnchor.children.stream().map(x -> x.node).collect(Collectors.toList());
 //                    int num2 = 0;
 //                    for (Node sib : sib2) {
 //                        if (num == 0)
@@ -259,10 +259,10 @@ public class Main {
 //            if (action instanceof ActionGenerator.Move) {
 //                ActionGenerator.Move moveAction = (ActionGenerator.Move) action;
 //                if (reverseSpaceMatching.containsKey(moveAction.toAnchor)) {
-//                    Node transfered = transfer(moveAction.relation.child, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching);
+//                    Node transfered = transfer(moveAction.relation.node, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching);
 //                    if (reverseSpaceMatching.containsKey(moveAction.fromAnchor))
-//                        reverseSpaceMatching.get(moveAction.fromAnchor).children.removeIf(x -> x.child == reverseSpaceMatching.get(moveAction.relation.child));
-//                    reverseSpaceMatching.get(moveAction.toAnchor).children.add(new Node.ChildRelation(transfered, moveAction.relation.edgeLabel));
+//                        reverseSpaceMatching.get(moveAction.fromAnchor).children.removeIf(x -> x.node == reverseSpaceMatching.get(moveAction.relation.node));
+//                    reverseSpaceMatching.get(moveAction.toAnchor).children.selfAdd(new Node.Child(transfered, moveAction.relation.edgeLabel));
 //                }
 //            }
 //            if (action instanceof ActionGenerator.Rename) {
@@ -302,13 +302,13 @@ public class Main {
             }
             if (action instanceof ActionGenerator.Update) {
                 ActionGenerator.Update updateAction = (ActionGenerator.Update) action;
-                // child mode
-//                Node.EdgeLabel label = reverseSpaceMatching.get(updateAction.deletedRelation.child).parent.children.stream().filter(x -> x.child == reverseSpaceMatching.get(updateAction.deletedRelation.child)).findAny().get().edgeLabel;
+                // node mode
+//                Node.Role label = reverseSpaceMatching.get(updateAction.deletedRelation.node).parent.children.stream().filter(x -> x.node == reverseSpaceMatching.get(updateAction.deletedRelation.node)).findAny().get().edgeLabel;
                 reverseSpaceMatching.get(updateAction.deletedRelation.child).parent.children.stream()
                         .filter(x -> x.child == reverseSpaceMatching.get(updateAction.deletedRelation.child)).findAny().get()
                         .child = betterTransfer(updateAction.addedRelation.child, replacePatterns, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching);
-//                reverseSpaceMatching.get(updateAction.deletedRelation.child).parent.children.add(new Node.ChildRelation(
-//                        betterTransfer(updateAction.addedRelation.child, replacePatterns, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching),
+//                reverseSpaceMatching.get(updateAction.deletedRelation.node).parent.children.selfAdd(new Node.Child(
+//                        betterTransfer(updateAction.addedRelation.node, replacePatterns, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching),
 //                        label
 //                ));
 
@@ -446,8 +446,8 @@ public class Main {
     }
 
     // one other way to do this is to do it like getPathVarMaps method: for every two paths p1 and p2, for every node n1 in  p1 and every node n2 in p2, force that their are matched and then compute the path score in this condition
-    // another modification is to instead of adding the varmatch to Node, add varmatchscores (for all pairs) to Node
-    // computes the score of two nodes matching together as this: for paths that match with score s and in that n1 and n2 match too, add s to nominator and 1 to denominator. for paths that contain n1 and n2 but in their matching they do not match, only add denominator by 1 (this is for normalization). nominator/denominator is the score of n1 and n2 matching in the programs
+    // another modification is to instead of adding the varmatch to Node, selfAdd varmatchscores (for all pairs) to Node
+    // computes the score of two nodes matching together as this: for paths that match with score s and in that n1 and n2 match too, selfAdd s to nominator and 1 to denominator. for paths that contain n1 and n2 but in their matching they do not match, only selfAdd denominator by 1 (this is for normalization). nominator/denominator is the score of n1 and n2 matching in the programs
     private static HashMap<Node, HashMap<Node, Map.Entry<Double, Double>>> getVerboseNodeNodeMap(
             HashMap<List<Node.PathElement>, Map.Entry<List<Node.PathElement>,
                     SequenceDistanceCalculator.Matching<Node.PathElement>>> firstPathPathMap,
@@ -754,11 +754,11 @@ public class Main {
         for (List<Node.PathElement> path : paths)
             System.out.println(path.size() + ": " + path);
 
-//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.ValueSource.Variable), EnumSet.of(Node.ValueSource.Literal)));
-//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.ValueSource.Variable, Node.ValueSource.Literal), EnumSet.of(Node.ValueSource.Literal)));
-//        System.out.println(Node.sourcesSimilarity(EnumSet.noneOf(Node.ValueSource.class), EnumSet.of(Node.ValueSource.Literal)));
-//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.ValueSource.Variable, Node.ValueSource.Literal), EnumSet.of(Node.ValueSource.Literal, Node.ValueSource.Input)));
-//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.ValueSource.Variable, Node.ValueSource.Literal), EnumSet.of(Node.ValueSource.Literal, Node.ValueSource.Variable)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.Source.LocalVariable), EnumSet.of(Node.Source.Literal)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.Source.LocalVariable, Node.Source.Literal), EnumSet.of(Node.Source.Literal)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.noneOf(Node.Source.class), EnumSet.of(Node.Source.Literal)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.Source.LocalVariable, Node.Source.Literal), EnumSet.of(Node.Source.Literal, Node.Source.Input)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.Source.LocalVariable, Node.Source.Literal), EnumSet.of(Node.Source.Literal, Node.Source.LocalVariable)));
     }
 
     public static Node firstProgram() {
@@ -1214,12 +1214,12 @@ public class Main {
 //        Node.variableMatchings = varMatching;
 //
 //        // this should be ungreedy
-//        List<SequenceDistanceCalculator.Matching<Node.ChildRelation>> pathMatching = new ArrayList<>();
+//        List<SequenceDistanceCalculator.Matching<Node.Child>> pathMatching = new ArrayList<>();
 //        while (true) {
 //            double currentMin = Double.MAX_VALUE;
-//            SequenceDistanceCalculator.Matching<Node.ChildRelation> currentMatching = null;
-//            for (List<Node.ChildRelation> firstPath : firstPaths)
-//                for (List<Node.ChildRelation> secondPath : secondPaths) {
+//            SequenceDistanceCalculator.Matching<Node.Child> currentMatching = null;
+//            for (List<Node.Child> firstPath : firstPaths)
+//                for (List<Node.Child> secondPath : secondPaths) {
 //                    SequenceDistanceCalculator.Matching matching =
 //                            SequenceDistanceCalculator.calculate(firstPath, secondPath, Node::getPenalty);
 //                    if (pathMatching.stream().noneMatch(x -> x.seq1 == firstPath) && pathMatching.stream().noneMatch(x -> x.seq2 == secondPath) && matching.score < currentMin) {
@@ -1229,11 +1229,11 @@ public class Main {
 //                }
 //            if (currentMatching == null)
 //                break;
-//            pathMatching.add(currentMatching);
+//            pathMatching.selfAdd(currentMatching);
 //        }
 //
 //        for (String firstVar : varMatching.keySet())
 //            System.out.println(firstVar + ":" + varMatching.get(firstVar));
 //
-//        for (SequenceDistanceCalculator.Matching<Node.ChildRelation> matching : pathMatching)
+//        for (SequenceDistanceCalculator.Matching<Node.Child> matching : pathMatching)
 //            System.out.println(matching);

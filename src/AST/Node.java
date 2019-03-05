@@ -497,8 +497,8 @@ public class Node {
                 res *= .1;
             if (elem1.node.type != elem2.node.type)
                 res *= .9;
-            // should i keep it or not? (i think i should keep it and add more info to it, or keep it in clone detection and remove it in diff detection)
-            res *= sourcesSimilarity(elem1.node.sources, elem2.node.sources) * .5 + .5; // this creates path-long correlation between elements matching score because we have both the in-the-path child source (next element) and the off-the-path sources (see the next line) which together create this. BUT solving it is not simple because a variable may be matched to an operator and in this case te node.sources of the two should be compared (and note, variable does not have valueSources because it is a leaf)
+            // should i keep it or not? (i think i should keep it and selfAdd more info to it, or keep it in clone detection and remove it in diff detection)
+            res *= sourcesSimilarity(elem1.node.sources, elem2.node.sources) * .5 + .5; // this creates path-long correlation between elements matching score because we have both the in-the-path node source (next element) and the off-the-path sources (see the next line) which together create this. BUT solving it is not simple because a variable may be matched to an operator and in this case te node.sources of the two should be compared (and note, variable does not have valueSources because it is a leaf)
             res *= sourcesSimilarity(elem1.valueSources, elem2.valueSources) * .6 + .4;
 
             // should i check values of other kinds of labels?
@@ -512,7 +512,7 @@ public class Node {
                     && (!elem1.node.sources.equals(EnumSet.of(ValueSource.Literal))
                     || !elem2.node.sources.equals(EnumSet.of(ValueSource.Literal))))
                 if (variableMatchings.getOrDefault(elem1.node.value, "").equals(elem2.node.value))
-                    // this is important. because now i use "child"edgelabel, here childedgelabel is null and does not affect this. but if i use edgelabel (of the very node) then i should check the labels after this line because two "i"s if(i) and i=4 shoud not be matched with score 1!
+                    // this is important. because now i use "node"edgelabel, here childedgelabel is null and does not affect this. but if i use edgelabel (of the very node) then i should check the labels after this line because two "i"s if(i) and i=4 shoud not be matched with score 1!
                     res = 1;
                 else
                     res *= .01; // is it good or should it be calculated?
@@ -561,7 +561,7 @@ public class Node {
     // a[c]=2, b=2
     // == and eq are onething
     // maybe make loop node have a condition and a body? (now it only has a body (some children (statement)))
-    // add castings
+    // selfAdd castings
     // now, e.g. after every mehod call i know i have an argument, so maybe i can do soemthing for it to optimize the alignment algorithm (IF those method calls match, the next arguments MUST match)
     // other optimizations, sometings such as block or arg (or et.c search for it) either do not match (skip) or match exactly with the same label. it helps optimizing the algorithm a lot.
     // consider try catch throw assert as well (but have in mind that penalty of removing them is really low)
@@ -581,9 +581,9 @@ public class Node {
         ClassMethodCall,//including property access,constructor call, (if first letter of the called obj is capital, we assume it is a class), here there is no method caller involved and so the valueSources will be that of arguments??
         CompareOperator,
         BooleanOperator,
-        ArithmeticOperator, // the arithmetics always return int, boolean and compare always boolean, so here occurs a duplication (however, simply combining them to a binary operator wont work for 1. we have unary operators too, 2.compar and boolean have same return type but are semantically different)
-        Break, // should i make loop be conditionless and add a branch (and break) inside it?
-        Continue, // should i add a continue at the end of all loops?
+        ArithmeticOperator, // the arithmetics always return int (no!), boolean and compare always boolean, so here occurs a duplication (however, simply combining them to a binary operator wont work for 1. we have unary operators too, 2.compar and boolean have same return type but are semantically different)
+        Break, // should i make loop be conditionless and selfAdd a branch (and break) inside it?
+        Continue, // should i selfAdd a continue at the end of all loops?
         Arguments // matching this to null is cost free, this label has variable sources, if there is no argument this does not have no children and its valueSources should be empty and be ignored in the comparison (so be careful: it is not the case that the last node in a path is always a value)
     }
 

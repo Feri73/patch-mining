@@ -1,8 +1,8 @@
 package AST;
 
-import FSM.State;
-import FSM.StateMachine;
-import FSM.Transition;
+//import FSM.State;
+//import FSM.StateMachine;
+//import FSM.Transition;
 import spoon.reflect.code.CtInvocation;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.reference.CtArrayTypeReference;
@@ -15,7 +15,7 @@ public class NodeConverterObsolete {
 //    StateMachine stateMachine = new StateMachine();
 //
 //    CtElement element;
-//    Node.ChildRelation childRelation;
+//    Node.Child childRelation;
 //
 //    public NodeConverterObsolete() {
 //
@@ -32,9 +32,9 @@ public class NodeConverterObsolete {
 //    }
 //
 //    private void elementInvocation(CtInvocation invocation) {
-//        childRelation.child.value = invocation.getExecutable().getSimpleName();
-//        childRelation.child.type = convertType(invocation.getExecutable().getType());
-////        childRelation.child.label
+//        childRelation.node.value = invocation.getExecutable().getSimpleName();
+//        childRelation.node.type = convertType(invocation.getExecutable().getType());
+////        childRelation.node.label
 ////        if(invocation.)
 //    }
 //

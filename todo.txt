@@ -1,19 +1,19 @@
-﻿instead of using -log (in node matching) use - (BTW, why for node match i use exp forms while for var match i use log forms) (which one comment in Main.java)
+﻿instead of using -log (in root matching) use - (BTW, why for root match i use exp forms while for var match i use log forms) (which one comment in Main.java)
 some nodes do not match (all nodes of at least one of the programs should all be matched)
-change the node matching algorithm (the last method call in test function). note that each node can be matched to more than one node
+change the root matching algorithm (the last method call in test function). note that each root can be matched to more than one root
 
 the iterative approach can be end-to-end
 test for clone detection
 why blocks do not pair correctly
 
-IMPORTANT:::::::::::::::::::::::::====> why some node pairs do not have score?(are not printed at all)
+IMPORTANT:::::::::::::::::::::::::====> why some root pairs do not have score?(are not printed at all)
 undeterministic behavior :|
 
-edgelabel on parent or child
+edgelabel on parent or root
 go for the iterative approach
 match score should be scaled by score
 
-the other node matching that has many matches
+the other root matching that has many matches
 include name method of clone detction
 
 
@@ -38,7 +38,7 @@ import AST.Node;
 import AST.NodeConverter;
 import Seq.SequenceDistanceCalculator;
 import Utils.StyledPrinter;
-import org.eclipse.jface.text.SequentialRewriteTextStore;
+import org.eclipse.jface.methodName.SequentialRewriteTextStore;
 import spoon.Launcher;
 import spoon.reflect.declaration.CtClass;
 
@@ -59,12 +59,12 @@ public class Main {
     private static String nonVerbosePathToString(List<Node.PathElement> path) {
         StringBuilder res = new StringBuilder();
         for (Node.PathElement elem : path)
-            res.append(elem.node.label + ":" + elem.node.value + ":" + elem.childEdgeLabel).append("--> ");
+            res.append(elem.root.label + ":" + elem.root.value + ":" + elem.childEdgeLabel).append("--> ");
         return res + "\n";
     }
 
-    private static boolean isValidValueSource(Node node) {
-        return node.label == Node.NodeLabel.Value && node.sources.size() == 1 && (node.sources.contains(Node.ValueSource.Variable) || node.sources.contains(Node.ValueSource.Input));
+    private static boolean isValidValueSource(Node root) {
+        return root.label == Node.NodeLabel.Value && root.sources.size() == 1 && (root.sources.contains(Node.ValueSource.Variable) || root.sources.contains(Node.ValueSource.Input));
     }
 
     // for every path p1 in one program containing variable v1, for every variable v2 in the other program, find the path p2 containing v2 that yeilds the best p1-p2 alignment score (conditioned on v1 and v2 be aligned together), and store this score for this p1,v2 pair
@@ -75,7 +75,7 @@ public class Main {
             for (List<Node.PathElement> secondPath : secondPaths) {
                 Node.PathElement firstLast = firstPath.get(firstPath.size() - 1);
                 Node.PathElement secondLast = secondPath.get(secondPath.size() - 1);
-                if (isValidValueSource(firstLast.node) && isValidValueSource(secondLast.node)) {
+                if (isValidValueSource(firstLast.root) && isValidValueSource(secondLast.root)) {
                     if (!firstPathVarMap.containsKey(firstPath))
                         firstPathVarMap.put(firstPath, new HashMap<>());
                     if (!secondPathVarMap.containsKey(secondPath))
@@ -89,14 +89,14 @@ public class Main {
                             + Node.getPenalty(firstLast, secondLast);
                     HashMap<String, Double> firstVarMap = firstPathVarMap.get(firstPath);
                     HashMap<String, Double> secondVarMap = secondPathVarMap.get(secondPath);
-                    if (!firstVarMap.containsKey(secondLast.node.value))
-                        firstVarMap.put(secondLast.node.value, Double.MAX_VALUE);
-                    if (!secondVarMap.containsKey(firstLast.node.value))
-                        secondVarMap.put(firstLast.node.value, Double.MAX_VALUE);
-                    if (score < firstVarMap.get(secondLast.node.value))
-                        firstVarMap.put(secondLast.node.value, score);
-                    if (score < secondVarMap.get(firstLast.node.value))
-                        secondVarMap.put(firstLast.node.value, score);
+                    if (!firstVarMap.containsKey(secondLast.root.value))
+                        firstVarMap.put(secondLast.root.value, Double.MAX_VALUE);
+                    if (!secondVarMap.containsKey(firstLast.root.value))
+                        secondVarMap.put(firstLast.root.value, Double.MAX_VALUE);
+                    if (score < firstVarMap.get(secondLast.root.value))
+                        firstVarMap.put(secondLast.root.value, score);
+                    if (score < secondVarMap.get(firstLast.root.value))
+                        secondVarMap.put(firstLast.root.value, score);
                 }
             }
         }
@@ -107,7 +107,7 @@ public class Main {
     private static HashMap<String, HashMap<String, Map.Entry<Double, Integer>>> getVarVarMap(HashMap<List<Node.PathElement>, HashMap<String, Double>> targetPathVarMap, Set<String> helpreVariables) {
         HashMap<String, HashMap<String, Map.Entry<Double, Integer>>> targetVarVarMap = new HashMap<>();
         for (List<Node.PathElement> path : targetPathVarMap.keySet()) {
-            Node last = path.get(path.size() - 1).node;
+            Node last = path.get(path.size() - 1).root;
             HashMap<String, Double> map = targetPathVarMap.get(path);
             if (!targetVarVarMap.containsKey(last.value))
                 targetVarVarMap.put(last.value, new HashMap<>());
@@ -179,7 +179,7 @@ public class Main {
         return new AbstractMap.SimpleEntry<>(firstPathPathMap, secondPathPathMap);
     }
 
-    // IMPORTANT:::::::::::::::::::::::::====> why some node pairs do not have score?(are not printed at all)
+    // IMPORTANT:::::::::::::::::::::::::====> why some root pairs do not have score?(are not printed at all)
     private static void updateNodeNodeMap(SequenceDistanceCalculator.Matching<Node.PathElement> matching, HashMap<Node, HashMap<Node, Map.Entry<Double, Double>>> nodeNodeMap) {
         //which one?
 //                double score = Math.exp(-(matching.score + 1.0 / Double.max(path1.size(), path2.size())));
@@ -187,14 +187,14 @@ public class Main {
         for (Map.Entry<Node.PathElement, Node.PathElement> match : matching.matching) {
             if (match.getKey() == null)
                 continue;
-            Node node1 = match.getKey().node;
+            Node node1 = match.getKey().root;
 
             for (Map.Entry<Node.PathElement, Node.PathElement> matchP : matching.matching) {
                 if (match == matchP)
                     continue;
 
                 if (matchP.getValue() != null) {
-                    Node node2P = matchP.getValue().node;
+                    Node node2P = matchP.getValue().root;
                     HashMap<Node, Map.Entry<Double, Double>> innerMapP = nodeNodeMap.getOrDefault(node1, new HashMap<>());
                     Map.Entry<Double, Double> currentEntryP = innerMapP.getOrDefault(node2P, new AbstractMap.SimpleEntry<>(0.0, 0.0));
                     innerMapP.put(node2P, new AbstractMap.SimpleEntry<>(currentEntryP.getValue() * currentEntryP.getKey() / (currentEntryP.getValue() + (1 + score)), currentEntryP.getValue() + (1 + score)));
@@ -205,7 +205,7 @@ public class Main {
             if (match.getValue() == null)
                 continue;
 
-            Node node2 = match.getValue().node;
+            Node node2 = match.getValue().root;
 
             HashMap<Node, Map.Entry<Double, Double>> innerMap = nodeNodeMap.getOrDefault(node1, new HashMap<>());
             Map.Entry<Double, Double> currentEntry = innerMap.getOrDefault(node2, new AbstractMap.SimpleEntry<>(0.0, 0.0));
@@ -214,7 +214,7 @@ public class Main {
         }
     }
 
-    // one other way to do this is to do it like getPathVarMaps method: for every two paths p1 and p2, for every node n1 in  p1 and every node n2 in p2, force that their are matched and then compute the path score in this condition
+    // one other way to do this is to do it like getPathVarMaps method: for every two paths p1 and p2, for every root n1 in  p1 and every root n2 in p2, force that their are matched and then compute the path score in this condition
     // another modification is to instead of adding the varmatch to Node, add varmatchscores (for all pairs) to Node
     // computes the score of two nodes matching together as this: for paths that match with score s and in that n1 and n2 match too, add s to nominator and 1 to denominator. for paths that contain n1 and n2 but in their matching they do not match, only add denominator by 1 (this is for normalization). nominator/denominator is the score of n1 and n2 matching in the programs
     private static HashMap<Node, HashMap<Node, Map.Entry<Double, Double>>> getNodeNodeMap(

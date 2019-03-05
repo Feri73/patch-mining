@@ -90,7 +90,7 @@ public class ActionGenerator {
         for (Node matchedNode1 : nodeMatching.keySet()) {
             if (reverseNodeMatching.containsKey(nodeMatching.get(matchedNode1).parent)) {
                 if (reverseNodeMatching.get(nodeMatching.get(matchedNode1).parent) != matchedNode1.parent) {
-//                    result.add(new Move(new Node.ChildRelation(matchedNode1, getEdgeLabel(matchedNode1))
+//                    result.selfAdd(new Move(new Node.Child(matchedNode1, getEdgeLabel(matchedNode1))
 //                            , matchedNode1.parent, reverseNodeMatching.get(nodeMatching.get(matchedNode1).parent)));
                     addDelete(matchedNode1, result, nodeMatching);
                     addAdd(nodeMatching.get(matchedNode1), result, reverseNodeMatching);
@@ -120,7 +120,7 @@ public class ActionGenerator {
                 }
             } else if (matchedNode1.parent != null && nodeMatching.get(matchedNode1).parent != null) {
                 // these are the only actions that have anchor in the second program space
-//                result.add(new Move(new Node.ChildRelation(matchedNode1, getEdgeLabel(matchedNode1)),
+//                result.selfAdd(new Move(new Node.Child(matchedNode1, getEdgeLabel(matchedNode1)),
 //                        matchedNode1.parent, nodeMatching.get(matchedNode1).parent));
                 addDelete(matchedNode1, result, nodeMatching);
             }
@@ -187,7 +187,7 @@ public class ActionGenerator {
         }
     }
 
-    // add should indicate the index (in children of anchor) the node is added
+    // selfAdd should indicate the index (in children of anchor) the node is added
     public static class Add implements Action {
         public Node.ChildRelation relation;
         public Node toAnchor;
@@ -201,7 +201,7 @@ public class ActionGenerator {
 
         @Override
         public String toString() {
-            return "node " + relation.child + ":\n\t" + "----add---->" + toAnchor + ":" + childIndex;
+            return "node " + relation.child + ":\n\t" + "----selfAdd---->" + toAnchor + ":" + childIndex;
         }
 
         @Override
