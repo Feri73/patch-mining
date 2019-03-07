@@ -24,6 +24,8 @@ import java.util.stream.Collectors;
 // assumption: orderinals in actions are applied without any modification "ON BEF TREE", we can not assume any order of actions from actiongenerator (e.g. first delete, then reorder, ...)
 // also another assumption is that the parent in actions is always present in the incrementally-built tree
 
+// better aproach for ordinal, maintain a list of all nodes before the added node, and when adding the new node, put it in a place after all nodes in that list which are matched in the same parent
+
 public class Patch {
     private final Snippet snippetBef;
     private final List<Action> actions;
@@ -168,6 +170,15 @@ public class Patch {
             if (result == null)
                 result = newMutableMap.get(node);
             return result;
+        }
+
+        private int convertEffectiveOrdinal(int effectiveOrdinal, Node befParent) {
+            List<Node.Child> children = befParent.getChildren();
+            for (int i = 0; i < children.size() && i < effectiveOrdinal; i++)
+                if (!befNewNodeMatchMap.containsKey(children.get(i).node) ||
+                        befNewNodeMatchMap.get(children.get(i).node).getParent() != befNewNodeMatchMap.get(befParent))
+                    effectiveOrdinal--;
+            return effectiveOrdinal;
         }
 
         // maybe i can move these to action, and make action use mutable node

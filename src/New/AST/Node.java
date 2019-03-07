@@ -1,6 +1,7 @@
 package New.AST;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -27,7 +28,7 @@ public abstract class Node {
         return getChildren().stream().filter(x -> x.node == childNode).findAny().get();
     }
 
-    protected Summary getThisSummary() {
+    public Summary getThisSummary() {
         return generateSummary(null, null);
     }
 
@@ -79,7 +80,7 @@ public abstract class Node {
     }
 
     // do not forget to override this
-    public List<Object> getLocalBehavioralPatternValues(){
+    public List<Object> getLocalBehavioralPatternValues() {
         return List.of(getClass());
     }
 
@@ -124,9 +125,9 @@ public abstract class Node {
     }
 
     public static class Summary {
-        private Set<Class<? extends Node>> nodeClasses;
-        private Set<Type> nodeTypes;
-        private Set<Value.Source> nodeSources;
+        private final Set<Class<? extends Node>> nodeClasses;
+        private final Set<Type> nodeTypes;
+        private final Set<Value.Source> nodeSources;
 
         public Summary() {
             nodeClasses = Set.of();
@@ -142,6 +143,18 @@ public abstract class Node {
                 nodeTypes.add(nodeType);
             if (nodeSource != null)
                 nodeSources.add(nodeSource);
+        }
+
+        public Set<Class<? extends Node>> getNodeClasses() {
+            return Collections.unmodifiableSet(nodeClasses);
+        }
+
+        public Set<Type> getNodeTypes() {
+            return Collections.unmodifiableSet(nodeTypes);
+        }
+
+        public Set<Value.Source> getNodeSources() {
+            return Collections.unmodifiableSet(nodeSources);
         }
 
         public Summary copy() {

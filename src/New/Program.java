@@ -17,10 +17,10 @@ import java.util.stream.Collectors;
 // test this
 public class Program {
 
-    private BiMap<Variable, Variable, Double> variableMatchScores;
+    private final BiMap<Variable, Variable, Double> variableMatchScores;
 
     private Program() {
-        variableMatchScores = new BiMap<>();
+        variableMatchScores = null;
     }
 
     private Program(BiMap<Variable, Variable, Double> variableMatchScores) {
@@ -233,7 +233,7 @@ public class Program {
     }
 
     private double getPenalty(Path.Element element1, Path.Element element2) {
-        return 0;
+        return -Math.log(new Penalty(variableMatchScores).getPenalty(element1, element2));
     }
 
     // two asusmptions about the score the returned in matching:

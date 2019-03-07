@@ -18,7 +18,7 @@ public class ActionGenerator {
     private final List<Pair<Node, Node>> nodeMatches;
     private final Map<Node, Node> nodeMatchMap;
 
-    private Map<Node, Boolean> aftIsProcessed;
+    private Set<Node> processedAftNodes;
 
     private ActionGenerator(Snippet snippetBef, Snippet snippetAft, List<Pair<Node, Node>> nodeMatches) {
         this.nodeMatches = new ArrayList<>(nodeMatches);
@@ -45,7 +45,7 @@ public class ActionGenerator {
         return result;
     }
 
-    private void addCopy(Node nodeAft, List<Action> result) {
+    private void addAdd(Node nodeAft, List<Action> result) {
         Pair<Node.Role, Integer> effectiveOridnalAft = getEffectiveOrdinalInParent(nodeAft);
 
         for (Action action : result)
@@ -66,8 +66,6 @@ public class ActionGenerator {
 
         Pair<Node.Role, Integer> effectiveOrdinal = getEffectiveOrdinalInParent(nodeAft);
         result.add(new Add(nodeAft, parent, effectiveOrdinal.getFirst(), effectiveOrdinal.getSecond()));
-
-        aftIsProcessed.put(nodeAft, true);
     }
 
     private void addDelete(Node nodeBef, List<Action> result) {
@@ -104,7 +102,7 @@ public class ActionGenerator {
                 nodeRole = child.role;
                 break;
             } else if (isMatched(child.node) && getMatch(child.node).getParent() == getMatch(child.node.getParent())
-                    || !isBeforeNode.get(child.node) && aftIsProcessed.get(child.node))
+                    || !isBeforeNode.get(child.node) && processedAftNodes.contains(child.node))
                 siblingsMap.get(child.role).add(child.node);
         return new Pair<>(nodeRole, siblingsMap.get(nodeRole).size() - 1);
     }
@@ -125,19 +123,18 @@ public class ActionGenerator {
     private void createMove(Node nodeBef, Node nodeAft, Node parent, List<Action> result) {
         Pair<Node.Role, Integer> effectiveOrdinal = getEffectiveOrdinalInParent(nodeAft);
         result.add(new Move(nodeBef, parent, effectiveOrdinal.getFirst(), effectiveOrdinal.getSecond()));
-        aftIsProcessed.put(nodeAft, true);
     }
 
     // to test this, compare generate(p,q) with reverse(generate(q,p))
     // reconsider this method overally
     private List<Action> generate() {
-        aftIsProcessed = new DefaultMap<>(a -> false);
+        processedAftNodes = new HashSet<>();
 
         List<Action> result = new ArrayList<>();
 
         // PERFORMANCE
-        for (Node node : nodeMatchMap.keySet())
-            if (isBeforeNode.get(node))
+        for (Node node : isBeforeNode.keySet())
+            if (isMatched(node) && isBeforeNode.get(node))
                 addDelete(node, result);
 
         for (Pair<Node, Node> nodeMatch : nodeMatches) {
@@ -148,7 +145,11 @@ public class ActionGenerator {
                 addReorder(nodeBef, nodeAft, result);
             if (!nodeAft.hasSameLocalVisualPattern(nodeBef))
                 result.add(new Rename(nodeBef, nodeAft));
+
+            processedAftNodes.add(nodeAft);
         }
+
+        Set<Node> unprocessedAftNodes = new HashSet<>();
 
         for (Pair<Node, Node> nodeMatch : nodeMatches) {
             Node nodeBef = nodeMatch.getFirst();
@@ -158,12 +159,25 @@ public class ActionGenerator {
                 if (getMatch(nodeAft.getParent()) != nodeBef.getParent())
                     createMove(nodeBef, nodeAft, getMatch(nodeAft.getParent()), result);
             } else
-                createMove(nodeBef, nodeAft, getMatch(nodeAft.getParent()), result);
+                unprocessedAftNodes.add(nodeAft);
+
+            processedAftNodes.add(nodeAft);
         }
 
-        for (Node node : nodeMatchMap.keySet())
-            if (!isBeforeNode.get(node))
-                addCopy(node, result);
+        unprocessedAftNodes.addAll(isBeforeNode.entrySet().stream()
+                .filter(x -> !x.getValue() && !processedAftNodes.contains(x.getKey()))
+                .map(x -> x.getKey()).collect(Collectors.toList()));
+
+        while (!unprocessedAftNodes.isEmpty()) {
+            for (Node node : unprocessedAftNodes)
+                if (processedAftNodes.contains(node.getParent())) {
+                    if (isMatched(node))
+                        createMove(getMatch(node), node, node.getParent(), result);
+                    else
+                        addAdd(node, result);
+                    processedAftNodes.add(node);
+                }
+        }
 
         return result;
     }
