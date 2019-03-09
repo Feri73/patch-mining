@@ -27,4 +27,11 @@ public class Assignment extends Node {
                 new Child(assigner, Role.Assigner),
                 new Child(assignee, Role.Assignee));
     }
+
+    @Override
+    protected void toTextual(String linePrefix, List<Text> result) {
+        assignee.toTextual(linePrefix + '\t', result);
+        result.add(new Text(this, " = "));
+        assigner.toTextual(linePrefix + '\t', result);
+    }
 }

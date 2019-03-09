@@ -36,6 +36,14 @@ public class Loop extends Node {
     }
 
     @Override
+    protected void toTextual(String linePrefix, List<Text> result) {
+        result.add(new Text(this, kind.name().toLowerCase() + " ("));
+        condition.toTextual(linePrefix + '\t', result);
+        result.add(new Text(this, ")"));
+        body.toTextual(linePrefix + '\t', result);
+    }
+
+    @Override
     public boolean hasSameLocalVisualPattern(Node node) {
         return super.hasSameLocalVisualPattern(node) && kind == ((Loop) node).kind;
     }

@@ -1,9 +1,14 @@
 package New.AST;
 
+import spoon.Launcher;
 import spoon.reflect.code.*;
+import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.reference.*;
+import spoon.support.reflect.code.CtBlockImpl;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -21,8 +26,14 @@ public class SnippetConverter {
         variablesMap = new HashMap<>();
     }
 
-    public Snippet convertSnippet(CtElement element) {
-        return new Snippet(element(element).get(0), getVariables());
+    public Snippet convertSnippet(File file, String methodName) throws FileNotFoundException {
+        Scanner scan = new Scanner(file);
+        scan.useDelimiter("\\Z");
+        String content = scan.next();
+        scan.close();
+
+        CtClass<?> clazz = Launcher.parseClass(content);
+        return new Snippet(element(clazz.getMethodsByName(methodName).get(0).getBody()).get(0), getVariables());
     }
 
     private Variable getVariable(CtVariableReference<?> variableReferenceElement) {
@@ -271,9 +282,18 @@ public class SnippetConverter {
         // assumption: the init statements all are converted to one root
         nodes.addAll(forElement.getForInit().stream().map(x -> element(x).get(0)).collect(Collectors.toList()));
 
-        List<Node> forBodyStatements = ((Block) element(forElement.getBody()).get(0)).getStatements();
-        forElement.getForUpdate().forEach(x -> forBodyStatements.add(element(x).get(0)));
-        Block body = new Block(forBodyStatements);
+        // do this for if and other similar stuff as well
+        if (!(forElement.getBody() instanceof CtBlock<?>)) {
+            CtBlock<?> block = new CtBlockImpl<>();
+            block.addStatement(forElement.getBody());
+            forElement.setBody(block);
+        }
+
+        for (CtStatement forUpdate : forElement.getForUpdate()) {
+            forUpdate.delete();
+            ((CtStatementList) forElement.getBody()).addStatement(forUpdate);
+        }
+        Block body = (Block) element(forElement.getBody()).get(0);
 
         Node condition;
         if (forElement.getExpression() == null)

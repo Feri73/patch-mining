@@ -104,7 +104,7 @@ public class ActionGenerator {
             } else if (isMatched(child.node) && getMatch(child.node).getParent() == getMatch(child.node.getParent())
                     || !isBeforeNode.get(child.node) && processedAftNodes.contains(child.node))
                 siblingsMap.get(child.role).add(child.node);
-        return new Pair<>(nodeRole, siblingsMap.get(nodeRole).size() - 1);
+        return new Pair<>(nodeRole, siblingsMap.get(nodeRole).size());
     }
 
     private static Node.Role getRoleInParent(Node node) {
@@ -134,19 +134,21 @@ public class ActionGenerator {
 
         // PERFORMANCE
         for (Node node : isBeforeNode.keySet())
-            if (isMatched(node) && isBeforeNode.get(node))
+            if (!isMatched(node) && isBeforeNode.get(node))
                 addDelete(node, result);
 
         for (Pair<Node, Node> nodeMatch : nodeMatches) {
             Node nodeBef = nodeMatch.getFirst();
             Node nodeAft = nodeMatch.getSecond();
 
-            if (isMatched(nodeAft.getParent()) && getMatch(nodeAft.getParent()) == nodeBef.getParent())
+            if (nodeAft.getParent() == null && nodeBef.getParent() == null)
+                processedAftNodes.add(nodeAft);
+            else if (isMatched(nodeAft.getParent()) && getMatch(nodeAft.getParent()) == nodeBef.getParent()) {
                 addReorder(nodeBef, nodeAft, result);
+                processedAftNodes.add(nodeAft);
+            }
             if (!nodeAft.hasSameLocalVisualPattern(nodeBef))
                 result.add(new Rename(nodeBef, nodeAft));
-
-            processedAftNodes.add(nodeAft);
         }
 
         Set<Node> unprocessedAftNodes = new HashSet<>();
@@ -156,19 +158,21 @@ public class ActionGenerator {
             Node nodeAft = nodeMatch.getSecond();
 
             if (isMatched(nodeAft.getParent())) {
-                if (getMatch(nodeAft.getParent()) != nodeBef.getParent())
+                if (getMatch(nodeAft.getParent()) != nodeBef.getParent()) {
                     createMove(nodeBef, nodeAft, getMatch(nodeAft.getParent()), result);
-            } else
+                    processedAftNodes.add(nodeAft);
+                }
+            } else if (nodeAft.getParent() != null || nodeBef.getParent() != null)
                 unprocessedAftNodes.add(nodeAft);
-
-            processedAftNodes.add(nodeAft);
         }
 
         unprocessedAftNodes.addAll(isBeforeNode.entrySet().stream()
                 .filter(x -> !x.getValue() && !processedAftNodes.contains(x.getKey()))
                 .map(x -> x.getKey()).collect(Collectors.toList()));
 
+        // PERFORMANCE
         while (!unprocessedAftNodes.isEmpty()) {
+            Set<Node> toBeMarkedProcessed = new HashSet<>();
             for (Node node : unprocessedAftNodes)
                 if (processedAftNodes.contains(node.getParent())) {
                     if (isMatched(node))
@@ -176,7 +180,9 @@ public class ActionGenerator {
                     else
                         addAdd(node, result);
                     processedAftNodes.add(node);
+                    toBeMarkedProcessed.add(node);
                 }
+            unprocessedAftNodes.removeAll(toBeMarkedProcessed);
         }
 
         return result;

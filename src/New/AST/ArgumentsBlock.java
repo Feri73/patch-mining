@@ -1,5 +1,6 @@
 package New.AST;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -18,5 +19,13 @@ public class ArgumentsBlock extends Node {
     @Override
     public List<Child> getChildren() {
         return arguments.stream().map(x -> new Child(x, Role.MethodArgument)).collect(Collectors.toList());
+    }
+
+    @Override
+    protected void toTextual(String linePrefix, List<Text> result) {
+        for (Node argument : arguments) {
+            argument.toTextual(linePrefix + '\t', result);
+            result.add(new Text(this, ", "));
+        }
     }
 }

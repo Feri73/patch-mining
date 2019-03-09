@@ -20,7 +20,7 @@ public class BiMap<K1, K2, V> extends DefaultMap<Pair<K1, K2>, V> {
 
     public BiMap(BiMap<K1, K2, V> initializer) {
         super(initializer);
-        this.defaultProvider = initializer.defaultProvider;
+        defaultProvider = initializer.defaultProvider;
     }
 
     public V get(K1 key1, K2 key2) {

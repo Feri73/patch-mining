@@ -1,51 +1,22 @@
-﻿instead of using -log (in root matching) use - (BTW, why for root match i use exp forms while for var match i use log forms) (which one comment in MainFormer.java)
-some nodes do not match (all nodes of at least one of the programs should all be matched)
-change the root matching algorithm (the last method call in test function). note that each root can be matched to more than one root
-
-the iterative approach can be end-to-end
-test for clone detection
-why blocks do not pair correctly
-
-IMPORTANT:::::::::::::::::::::::::====> why some root pairs do not have score?(are not printed at all)
-undeterministic behavior :|
-
-edgelabel on parent or root
-go for the iterative approach
-match score should be scaled by score
-
-the other root matching that has many matches
-include name method of clone detction
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import AST.Node;
 import AST.NodeConverter;
+import ActGen.ActionGenerator;
 import Seq.SequenceDistanceCalculator;
+import Utils.Pair;
 import Utils.StyledPrinter;
-import org.eclipse.jface.methodName.SequentialRewriteTextStore;
 import spoon.Launcher;
 import spoon.reflect.declaration.CtClass;
+import spoon.reflect.declaration.CtMethod;
 
-import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.*;
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.stream.Collectors;
+
+//  #35 in info.docx
+// also, if i can use a diff checkere wiht my algorihtm, i do not need to use gumtree in my workflow
+
+// make the node matching algorithm better and then use clone detection task to evaluate it
 
 // one other idea is to do this local+global context matching with gumtree algorithm (in which the criteria of matching two subtrees is not only the subtrees themeselves, but the path from root of the programs to root of the trees + the matched variables)
 
@@ -59,12 +30,12 @@ public class MainFormer {
     private static String nonVerbosePathToString(List<Node.PathElement> path) {
         StringBuilder res = new StringBuilder();
         for (Node.PathElement elem : path)
-            res.append(elem.root.label + ":" + elem.root.value + ":" + elem.childEdgeLabel).append("--> ");
+            res.append(elem.node.label + ":" + elem.node.value + ":" + elem.childEdgeLabel).append("--> ");
         return res + "\n";
     }
 
-    private static boolean isValidValueSource(Node root) {
-        return root.label == Node.NodeLabel.Value && root.sources.size() == 1 && (root.sources.contains(Node.ValueSource.Variable) || root.sources.contains(Node.ValueSource.Input));
+    private static boolean isValidValueSource(Node node) {
+        return node.label == Node.NodeLabel.Value && node.sources.size() == 1 && (node.sources.contains(Node.ValueSource.Variable) || node.sources.contains(Node.ValueSource.Input));
     }
 
     // for every path p1 in one program containing variable v1, for every variable v2 in the other program, find the path p2 containing v2 that yeilds the best p1-p2 alignment score (conditioned on v1 and v2 be aligned together), and store this score for this p1,v2 pair
@@ -75,7 +46,7 @@ public class MainFormer {
             for (List<Node.PathElement> secondPath : secondPaths) {
                 Node.PathElement firstLast = firstPath.get(firstPath.size() - 1);
                 Node.PathElement secondLast = secondPath.get(secondPath.size() - 1);
-                if (isValidValueSource(firstLast.root) && isValidValueSource(secondLast.root)) {
+                if (isValidValueSource(firstLast.node) && isValidValueSource(secondLast.node)) {
                     if (!firstPathVarMap.containsKey(firstPath))
                         firstPathVarMap.put(firstPath, new HashMap<>());
                     if (!secondPathVarMap.containsKey(secondPath))
@@ -84,19 +55,19 @@ public class MainFormer {
                     SequenceDistanceCalculator.Matching<Node.PathElement> matching = SequenceDistanceCalculator.calculate(
                             firstPath.subList(0, firstPath.size() - 1), secondPath.subList(0, secondPath.size() - 1),
                             Node::getPenalty);
-                    // is 1/l the best option i have (e.g. think about why we do not average the sequence elements alignment scores and instead add them? does it mean that we do not need length normalization at all here?). also shouldn't i add 1/l in sequence alignment algorithm instead of here?
+                    // is 1/l the best option i have (e.g. think about why we do not average the sequence elements alignment scores and instead selfAdd them? does it mean that we do not need length normalization at all here?). also shouldn't i selfAdd 1/l in sequence alignment algorithm instead of here?
                     double score = matching.score + 1.0 / Double.max(firstPath.size(), secondPath.size())
                             + Node.getPenalty(firstLast, secondLast);
                     HashMap<String, Double> firstVarMap = firstPathVarMap.get(firstPath);
                     HashMap<String, Double> secondVarMap = secondPathVarMap.get(secondPath);
-                    if (!firstVarMap.containsKey(secondLast.root.value))
-                        firstVarMap.put(secondLast.root.value, Double.MAX_VALUE);
-                    if (!secondVarMap.containsKey(firstLast.root.value))
-                        secondVarMap.put(firstLast.root.value, Double.MAX_VALUE);
-                    if (score < firstVarMap.get(secondLast.root.value))
-                        firstVarMap.put(secondLast.root.value, score);
-                    if (score < secondVarMap.get(firstLast.root.value))
-                        secondVarMap.put(firstLast.root.value, score);
+                    if (!firstVarMap.containsKey(secondLast.node.value))
+                        firstVarMap.put(secondLast.node.value, Double.MAX_VALUE);
+                    if (!secondVarMap.containsKey(firstLast.node.value))
+                        secondVarMap.put(firstLast.node.value, Double.MAX_VALUE);
+                    if (score < firstVarMap.get(secondLast.node.value))
+                        firstVarMap.put(secondLast.node.value, score);
+                    if (score < secondVarMap.get(firstLast.node.value))
+                        secondVarMap.put(firstLast.node.value, score);
                 }
             }
         }
@@ -107,7 +78,7 @@ public class MainFormer {
     private static HashMap<String, HashMap<String, Map.Entry<Double, Integer>>> getVarVarMap(HashMap<List<Node.PathElement>, HashMap<String, Double>> targetPathVarMap, Set<String> helpreVariables) {
         HashMap<String, HashMap<String, Map.Entry<Double, Integer>>> targetVarVarMap = new HashMap<>();
         for (List<Node.PathElement> path : targetPathVarMap.keySet()) {
-            Node last = path.get(path.size() - 1).root;
+            Node last = path.get(path.size() - 1).node;
             HashMap<String, Double> map = targetPathVarMap.get(path);
             if (!targetVarVarMap.containsKey(last.value))
                 targetVarVarMap.put(last.value, new HashMap<>());
@@ -170,31 +141,292 @@ public class MainFormer {
                 var secondEntry = secondPathPathMap.getOrDefault(path2, new AbstractMap.SimpleEntry<>(null, new SequenceDistanceCalculator.Matching<Node.PathElement>(null, Double.POSITIVE_INFINITY, null, null)));
                 SequenceDistanceCalculator.Matching<Node.PathElement> matching = SequenceDistanceCalculator.calculate(path1, path2, Node::getPenalty);
                 matching.score += 1.0 / Double.max(path1.size(), path2.size());
-                if (matching.score < firstEntry.getValue().score)
-                    firstPathPathMap.put(path1, new AbstractMap.SimpleEntry<>(path2, matching));
-                if (matching.score < secondEntry.getValue().score)
-                    secondPathPathMap.put(path2, new AbstractMap.SimpleEntry<>(path1, matching));
+                firstPathPathMap.put(path1.stream().map(x -> new Node.PathElement(x.node, x.childEdgeLabel, x.valueSources)).collect(Collectors.toList()), new AbstractMap.SimpleEntry<>(path2, matching));
+                secondPathPathMap.put(path2.stream().map(x -> new Node.PathElement(x.node, x.childEdgeLabel, x.valueSources)).collect(Collectors.toList()), new AbstractMap.SimpleEntry<>(path1, matching));
+                // uncomment these and comment two above statements to go for the mode that each path hsa one best path
+//                if (matching.score < firstEntry.getValue().score)
+//                    firstPathPathMap.put(path1, new AbstractMap.SimpleEntry<>(path2, matching));
+//                if (matching.score < secondEntry.getValue().score)
+//                    secondPathPathMap.put(path2, new AbstractMap.SimpleEntry<>(path1, matching));
             }
 
         return new AbstractMap.SimpleEntry<>(firstPathPathMap, secondPathPathMap);
     }
 
-    // IMPORTANT:::::::::::::::::::::::::====> why some root pairs do not have score?(are not printed at all)
+
+    private static HashMap<String, String> getFuncMatching(Map<Node, Node> nodeMatching) {
+        HashMap<String, HashMap<String, Integer>> verboseResult = new HashMap<>();
+        for (Node node : nodeMatching.keySet()) {
+            switch (node.label) {
+                case ObjectSetterCall:
+                case ObjectGetterCall:
+                case ObjectMethodCall:
+                case ClassMethodCall:
+                    HashMap<String, Integer> innerMap = verboseResult.getOrDefault(node.value, new HashMap<>());
+                    innerMap.put(nodeMatching.get(node).value, innerMap.getOrDefault(nodeMatching.get(node).value, 0) + 1);
+                    verboseResult.put(node.value, innerMap);
+                default:
+                    continue;
+            }
+        }
+
+        HashMap<String, String> result = new HashMap<>();
+        for (String name : verboseResult.keySet()) {
+            Map.Entry<String, Integer> maxEntry = verboseResult.get(name).entrySet().stream().max(Comparator.comparingInt(x -> x.getValue())).get();
+            result.put(name, maxEntry.getKey());
+        }
+
+        return result;
+    }
+
+    private static void editNode(Node p1, Node pp1, Node p2) {
+        HashMap<Node, Node> patchMatch = getMatches(getNodeNodeMap(p1, pp1));
+        List<ActionGenerator.Action> patchActions = ActionGenerator.generate(p1, pp1, patchMatch);
+
+        Map<Node, Node> reversePatchMatching = patchMatch.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
+        HashMap<Node, Node> spaceMatch = getMatches(getNodeNodeMap(p2, p1));
+        Map<Node, Node> reverseSpaceMatching = spaceMatch.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+        List<ActionGenerator.Action> reverseSpaceActions = ActionGenerator.generate(p1, p2, reverseSpaceMatching);
+
+        HashMap<String, String> variableMatching = Node.variableMatchings;
+
+        List<Map.Entry<Node, Node>> replacePatterns = new ArrayList<>();
+        for (ActionGenerator.Action action : reverseSpaceActions)
+            if (action instanceof ActionGenerator.Update) {
+                ActionGenerator.Update updateAction = (ActionGenerator.Update) action;
+                // for each key there can be more than one value, this should be considered in genetic algorithm
+                // the other thing in genetic algorithm is that if a key is not found, i should use transfer function and in the transfer function for each type of operator i should iterate on all operators in that categorization
+                if (!updateAction.deletedRelation.child.sources.equals(EnumSet.of(Node.ValueSource.Literal)))
+                    replacePatterns.add(new AbstractMap.SimpleEntry<>(updateAction.deletedRelation.child, updateAction.addedRelation.child));
+            }
+        for (ActionGenerator.Action action : reverseSpaceActions)
+            if (action instanceof ActionGenerator.Rename) {
+                ActionGenerator.Rename renameAction = (ActionGenerator.Rename) action;
+                replacePatterns.add(new AbstractMap.SimpleEntry<>(renameAction.formerNode, renameAction.currentNode));
+            }
+        for (Node n : reverseSpaceMatching.keySet())
+            replacePatterns.add(new AbstractMap.SimpleEntry<>(n, reverseSpaceMatching.get(n)));
+
+        Map<String, String> reverseVariableMatching = variableMatching.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+        Map<String, String> funcMatching = getFuncMatching(spaceMatch);
+//        Map<String, String> reverseFuncMatching = funcMatching.entrySet().stream()
+//                .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+        Map<String, String> reverseFuncMatching = getFuncMatching(reverseSpaceMatching);
+
+        // IMPORTANT: CONSIDER THE POSSIBILITY THAT ADD OR MOVE (OR ALL OTHER) CANNOT BE COMPLETED SIMPLY BECAUSE THE CORRESPODING ANCHIR DOE SNOT EXIST
+        for (ActionGenerator.Action action : patchActions) {
+            if (action instanceof ActionGenerator.Add) {
+                ActionGenerator.Add addAction = (ActionGenerator.Add) action;
+
+                if (reverseSpaceMatching.containsKey(addAction.toAnchor)) {
+                    List<Node> sib1 = addAction.relation.child.parent.children.stream().map(x -> x.child).collect(Collectors.toList());
+                    int num = 0;
+                    int count1 = addAction.childIndex;
+                    for (Node sib : sib1) {
+                        if (count1 == 0)
+                            break;
+                        if (reversePatchMatching.containsKey(sib) && reversePatchMatching.get(sib).parent == reversePatchMatching.get(sib.parent)) {
+                            count1--;
+                            if (reverseSpaceMatching.containsKey(reversePatchMatching.get(sib)) && reverseSpaceMatching.get(reversePatchMatching.get(sib)).parent == reverseSpaceMatching.get(reversePatchMatching.get(sib.parent)))
+                                num++;
+                        }
+                    }
+
+//                    List<Node> sib2 = addAction.toAnchor.children.stream().map(x -> x.node).collect(Collectors.toList());
+//                    int num2 = 0;
+//                    for (Node sib : sib2) {
+//                        if (num == 0)
+//                            break;
+//                        if (reverseSpaceMatching.containsKey(sib) && reverseSpaceMatching.get(sib).parent == reverseSpaceMatching.get(sib.parent))
+//                            num--;
+//                        num2++;
+//                    }
+                    reverseSpaceMatching.get(addAction.toAnchor).children.add(num, new Node.ChildRelation(
+                            betterTransfer(addAction.relation.child, replacePatterns, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching),
+                            addAction.relation.edgeLabel
+                    ));
+                }
+            }
+            if (action instanceof ActionGenerator.Delete) {
+                ActionGenerator.Delete deleteAction = (ActionGenerator.Delete) action;
+                if (reverseSpaceMatching.containsKey(deleteAction.relation.child)) {
+                    reverseSpaceMatching.get(deleteAction.relation.child).parent.children.removeIf(x -> x.child == reverseSpaceMatching.get(deleteAction.relation.child));
+                }
+            }
+//            if (action instanceof ActionGenerator.Move) {
+//                ActionGenerator.Move moveAction = (ActionGenerator.Move) action;
+//                if (reverseSpaceMatching.containsKey(moveAction.toAnchor)) {
+//                    Node transfered = transfer(moveAction.relation.node, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching);
+//                    if (reverseSpaceMatching.containsKey(moveAction.fromAnchor))
+//                        reverseSpaceMatching.get(moveAction.fromAnchor).children.removeIf(x -> x.node == reverseSpaceMatching.get(moveAction.relation.node));
+//                    reverseSpaceMatching.get(moveAction.toAnchor).children.selfAdd(new Node.Child(transfered, moveAction.relation.edgeLabel));
+//                }
+//            }
+//            if (action instanceof ActionGenerator.Rename) {
+//                // HOW TO DEAL WITH THIS? (E.G IF IN DB 1 BECOME TO, IN SOURCE CODE SNIPPET 4 SHOULD BECOME 5. SAME WITH OTHER LITERAL TYPES
+//                ActionGenerator.Rename renameAction = (ActionGenerator.Rename) action;
+//                if (reverseSpaceMatching.containsKey(renameAction.formerNode))
+//                    reverseSpaceMatching.get(renameAction.formerNode).value = renameAction.currentNode.value;
+//            }
+            if (action instanceof ActionGenerator.Reorder) {
+                ActionGenerator.Reorder reorderAction = (ActionGenerator.Reorder) action;
+                if (reverseSpaceMatching.containsKey(reorderAction.fromAnchor)) {
+                    Node node = reverseSpaceMatching.get(reorderAction.relation.child);
+                    int diff = reorderAction.toIndex - reorderAction.fromIndex;
+
+                    List<Node> sib1 = node.parent.children.stream().map(x -> x.child).collect(Collectors.toList());
+                    int count1 = 0;
+                    for (Node sib : sib1)
+                        if (spaceMatch.containsKey(sib) && spaceMatch.get(sib).parent == spaceMatch.get(sib.parent)) {
+                            count1++;
+                            if (sib == node)
+                                break;
+                        }
+                    reverseSpaceMatching.get(reorderAction.fromAnchor).children.removeIf(x -> x.child == reverseSpaceMatching.get(reorderAction.relation.child));
+                    count1 += diff;
+
+                    int num = 0;
+                    for (Node sib : sib1) {
+                        if (spaceMatch.containsKey(sib) && spaceMatch.get(sib).parent == spaceMatch.get(sib.parent))
+                            count1--;
+                        if (count1 == 0) {
+                            reverseSpaceMatching.get(reorderAction.fromAnchor).children.add(num, new Node.ChildRelation(node, reorderAction.relation.edgeLabel));
+                            break;
+                        }
+                        num++;
+                    }
+                }
+            }
+            if (action instanceof ActionGenerator.Update) {
+                ActionGenerator.Update updateAction = (ActionGenerator.Update) action;
+                // node mode
+//                Node.Role label = reverseSpaceMatching.get(updateAction.deletedRelation.node).parent.children.stream().filter(x -> x.node == reverseSpaceMatching.get(updateAction.deletedRelation.node)).findAny().get().edgeLabel;
+                reverseSpaceMatching.get(updateAction.deletedRelation.child).parent.children.stream()
+                        .filter(x -> x.child == reverseSpaceMatching.get(updateAction.deletedRelation.child)).findAny().get()
+                        .child = betterTransfer(updateAction.addedRelation.child, replacePatterns, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching);
+//                reverseSpaceMatching.get(updateAction.deletedRelation.node).parent.children.selfAdd(new Node.Child(
+//                        betterTransfer(updateAction.addedRelation.node, replacePatterns, reverseSpaceMatching, reverseVariableMatching, reverseFuncMatching),
+//                        label
+//                ));
+
+                //parent mode (to be coded)
+            }
+        }
+    }
+
+    private static Node betterTransfer(Node p, List<Map.Entry<Node, Node>> replacePatterns,
+                                       Map<Node, Node> reverseNodeMatching,
+                                       Map<String, String> reverseVarMatching,
+                                       Map<String, String> reverseFuncMatching) {
+        for (Map.Entry<Node, Node> entry : replacePatterns)
+            p.replaceSubtree(entry.getKey(), entry.getValue());
+        return transfer(p, reverseNodeMatching, reverseVarMatching, reverseFuncMatching);
+    }
+
+    // for each variable that is not present in the source code snippet, we have to consider both possiblities of it being in the transfered patch or not (now i put it in the patch)
+    private static Node transfer(Node p, Map<Node, Node> reverseNodeMatching,
+                                 Map<String, String> reverseVarMatching,
+                                 Map<String, String> reverseFuncMatching) {
+        // for now i do not care about sources, but this has to be modified.
+        EnumSet<Node.ValueSource> sources = EnumSet.noneOf(Node.ValueSource.class);
+        Node result;
+        switch (p.label) {
+            case Branch:
+            case Loop:
+            case Block:
+            case Assignment:
+            case CompareOperator:
+            case BooleanOperator:
+            case ArithmeticOperator:
+            case Break:
+            case Continue:
+            case Arguments:
+                result = new Node(p.label, p.value, null, p.type);
+                break;
+            case Value:
+                if (reverseVarMatching.containsKey(p.value))
+                    // for now i do not care about type, but this has to be modified.
+                    result = new Node(p.label, reverseVarMatching.get(p.value), null, null);
+                else
+                    result = new Node(p.label, p.value, null, null);
+                break;
+            // these 4 method call things should not be deterministic, i.e. i should check more than one possibility (put the exact function in the target space, or put all source space functions that match the target space function)
+            case ObjectSetterCall:
+            case ObjectGetterCall:
+            case ObjectMethodCall:
+            case ClassMethodCall:
+                String value = p.value;
+                if (reverseFuncMatching.containsKey(p.value))
+                    value = reverseFuncMatching.get(p.value);
+                // for now i do not care about type, but this has to be modified.
+                result = new Node(p.label, value, null, null);
+                break;
+            default:
+                throw new RuntimeException("Unsupported label");
+        }
+        for (Node.ChildRelation relation : p.children)
+            if (!reverseNodeMatching.containsKey(relation.child))
+                result.addChild(transfer(relation.child, reverseNodeMatching, reverseVarMatching, reverseFuncMatching), relation.edgeLabel);
+        return result;
+    }
+
+    private static HashMap<Node, HashMap<Node, Double>> getNodeNodeMap(Node p1, Node p2) {
+        Node.variableMatchings = null;
+
+        List<List<Node.PathElement>> firstPaths = p1.getAllPaths();
+        List<List<Node.PathElement>> secondPaths = p2.getAllPaths();
+
+        var pathVarMaps = getPathVarMaps(firstPaths, secondPaths);
+        HashMap<List<Node.PathElement>, HashMap<String, Double>> firstPathVarMap = pathVarMaps.getKey();
+        HashMap<List<Node.PathElement>, HashMap<String, Double>> secondPathVarMap = pathVarMaps.getValue();
+
+        Set<String> firstVars = secondPathVarMap.values().stream().findAny().get().keySet();
+        Set<String> secondVars = firstPathVarMap.values().stream().findAny().get().keySet();
+
+        HashMap<String, HashMap<String, Map.Entry<Double, Integer>>> firstVarVarMap = getVarVarMap(firstPathVarMap, secondVars);
+        HashMap<String, HashMap<String, Map.Entry<Double, Integer>>> secondVarVarMap = getVarVarMap(secondPathVarMap, firstVars);
+
+        HashMap<String, HashMap<String, Double>> meanVarVarMap = getMeanVarVarMap(firstVarVarMap, secondVarVarMap);
+
+        HashMap<String, String> varMatches = getMatches(meanVarVarMap);
+
+        Node.variableMatchings = varMatches;
+
+        var pathPathMaps = getPathPathMaps(firstPaths, secondPaths);
+        HashMap<Node, HashMap<Node, Map.Entry<Double, Double>>> verboseNodeNodeMap = getVerboseNodeNodeMap(pathPathMaps.getKey(), pathPathMaps.getValue());
+        HashMap<Node, HashMap<Node, Double>> nodeNodeMap = new HashMap<>();
+        for (Node node1 : verboseNodeNodeMap.keySet()) {
+            nodeNodeMap.put(node1, new HashMap<>());
+            for (Node node2 : verboseNodeNodeMap.get(node1).keySet()) {
+                // if in the "which one" comment i choose second, i should here also choose second and vice versa
+//                nodeNodeMap.get(node1).put(node2, -Math.log(verboseNodeNodeMap.get(node1).get(node2).getKey()));
+                nodeNodeMap.get(node1).put(node2, 1 / verboseNodeNodeMap.get(node1).get(node2).getKey());
+            }
+        }
+
+        return nodeNodeMap;
+    }
+
+    // IMPORTANT:::::::::::::::::::::::::====> why some node pairs do not have score?(are not printed at all)
     private static void updateNodeNodeMap(SequenceDistanceCalculator.Matching<Node.PathElement> matching, HashMap<Node, HashMap<Node, Map.Entry<Double, Double>>> nodeNodeMap) {
         //which one?
 //                double score = Math.exp(-(matching.score + 1.0 / Double.max(path1.size(), path2.size())));
         double score = 1.0 / matching.score;
-        for (Map.Entry<Node.PathElement, Node.PathElement> match : matching.matching) {
-            if (match.getKey() == null)
+        for (Pair<Node.PathElement, Node.PathElement> match : matching.matching) {
+            if (match.getFirst() == null)
                 continue;
-            Node node1 = match.getKey().root;
+            Node node1 = match.getFirst().node;
 
-            for (Map.Entry<Node.PathElement, Node.PathElement> matchP : matching.matching) {
+            for (Pair<Node.PathElement, Node.PathElement> matchP : matching.matching) {
                 if (match == matchP)
                     continue;
 
-                if (matchP.getValue() != null) {
-                    Node node2P = matchP.getValue().root;
+                if (matchP.getSecond() != null) {
+                    Node node2P = matchP.getSecond().node;
                     HashMap<Node, Map.Entry<Double, Double>> innerMapP = nodeNodeMap.getOrDefault(node1, new HashMap<>());
                     Map.Entry<Double, Double> currentEntryP = innerMapP.getOrDefault(node2P, new AbstractMap.SimpleEntry<>(0.0, 0.0));
                     innerMapP.put(node2P, new AbstractMap.SimpleEntry<>(currentEntryP.getValue() * currentEntryP.getKey() / (currentEntryP.getValue() + (1 + score)), currentEntryP.getValue() + (1 + score)));
@@ -202,10 +434,10 @@ public class MainFormer {
                 }
             }
 
-            if (match.getValue() == null)
+            if (match.getSecond() == null)
                 continue;
 
-            Node node2 = match.getValue().root;
+            Node node2 = match.getSecond().node;
 
             HashMap<Node, Map.Entry<Double, Double>> innerMap = nodeNodeMap.getOrDefault(node1, new HashMap<>());
             Map.Entry<Double, Double> currentEntry = innerMap.getOrDefault(node2, new AbstractMap.SimpleEntry<>(0.0, 0.0));
@@ -214,10 +446,10 @@ public class MainFormer {
         }
     }
 
-    // one other way to do this is to do it like getPathVarMaps method: for every two paths p1 and p2, for every root n1 in  p1 and every root n2 in p2, force that their are matched and then compute the path score in this condition
-    // another modification is to instead of adding the varmatch to Node, add varmatchscores (for all pairs) to Node
-    // computes the score of two nodes matching together as this: for paths that match with score s and in that n1 and n2 match too, add s to nominator and 1 to denominator. for paths that contain n1 and n2 but in their matching they do not match, only add denominator by 1 (this is for normalization). nominator/denominator is the score of n1 and n2 matching in the programs
-    private static HashMap<Node, HashMap<Node, Map.Entry<Double, Double>>> getNodeNodeMap(
+    // one other way to do this is to do it like getPathVarMaps method: for every two paths p1 and p2, for every node n1 in  p1 and every node n2 in p2, force that their are matched and then compute the path score in this condition
+    // another modification is to instead of adding the varmatch to Node, selfAdd varmatchscores (for all pairs) to Node
+    // computes the score of two nodes matching together as this: for paths that match with score s and in that n1 and n2 match too, selfAdd s to nominator and 1 to denominator. for paths that contain n1 and n2 but in their matching they do not match, only selfAdd denominator by 1 (this is for normalization). nominator/denominator is the score of n1 and n2 matching in the programs
+    private static HashMap<Node, HashMap<Node, Map.Entry<Double, Double>>> getVerboseNodeNodeMap(
             HashMap<List<Node.PathElement>, Map.Entry<List<Node.PathElement>,
                     SequenceDistanceCalculator.Matching<Node.PathElement>>> firstPathPathMap,
             HashMap<List<Node.PathElement>, Map.Entry<List<Node.PathElement>,
@@ -237,6 +469,47 @@ public class MainFormer {
         }
 
         return result;
+    }
+
+    private static void printStyledPrograms(HashMap<Node, Node> nodeMatches, Node p1, Node p2) {
+        int styleIndex = 0;
+        Field[] styleFields = StyledPrinter.class.getFields();
+        for (Node node1 : nodeMatches.keySet())
+            try {
+                styleIndex %= styleFields.length;
+                while ("RESET".equals(styleFields[styleIndex].getName()) || styleFields[styleIndex].getName().contains("WHITE") || styleFields[styleIndex].getName().contains("BLACK"))
+                    styleIndex = (styleIndex + 1) % styleFields.length;
+                node1.styleCode = (String) styleFields[styleIndex].get(null);
+                nodeMatches.get(node1).styleCode = node1.styleCode;
+                styleIndex++;
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException();
+            }
+
+//        String[] p1Lines = p1.toStyledString("").split("\n");
+//        String[] p2Lines = p2.toStyledString("").split("\n");
+//        for (int i = 0; i < p1Lines.length || i < p2Lines.length; i++) {
+//            String txt1 = "";
+//            String txt2 = "";
+//            if (i < p1Lines.length)
+//                txt1 = p1Lines[i];
+//            if (i < p2Lines.length)
+//                txt2 = p2Lines[i];
+//
+//            int reqSpace = 160 - txt1.length();
+//            System.out.print(txt1);
+//            for (int j = 0; j < reqSpace; j++)
+//                System.out.print(" ");
+//            System.out.print("|   ");
+//            System.out.println(txt2);
+//        }
+
+
+        System.out.println();
+        System.out.println(p1.toStyledString(""));
+        System.out.println();
+        System.out.println(p2.toStyledString(""));
+        System.out.println("-----------------------------------------------------------------------------------------");
     }
 
     private static void testGetPathVarMaps(Node p1, Node p2) {
@@ -314,88 +587,157 @@ public class MainFormer {
         System.out.println(p1.subtreeEquals(p1p));
     }
 
-    private static void testGetNodeNodeMap(Node p1, Node p2) {
-        List<List<Node.PathElement>> firstPaths = p1.getAllPaths();
-        List<List<Node.PathElement>> secondPaths = p2.getAllPaths();
+    private static HashMap<Node, HashMap<Node, Double>> testGetNodeNodeMap(Node p1, Node p2) {
+//        for (Node node1 : nodeNodeMap.keySet()) {
+//            System.out.println(node1.parent + "-->" + node1);
+//            for (Node node2 : nodeNodeMap.get(node1).keySet())
+//                System.out.println("\t\t" + node2.parent + "-->" + node2 + " ==>  " + nodeNodeMap.get(node1).get(node2));
+//        }
 
-        var pathVarMaps = getPathVarMaps(firstPaths, secondPaths);
-        HashMap<List<Node.PathElement>, HashMap<String, Double>> firstPathVarMap = pathVarMaps.getKey();
-        HashMap<List<Node.PathElement>, HashMap<String, Double>> secondPathVarMap = pathVarMaps.getValue();
-
-        Set<String> firstVars = secondPathVarMap.values().stream().findAny().get().keySet();
-        Set<String> secondVars = firstPathVarMap.values().stream().findAny().get().keySet();
-
-        HashMap<String, HashMap<String, Map.Entry<Double, Integer>>> firstVarVarMap = getVarVarMap(firstPathVarMap, secondVars);
-        HashMap<String, HashMap<String, Map.Entry<Double, Integer>>> secondVarVarMap = getVarVarMap(secondPathVarMap, firstVars);
-
-        HashMap<String, HashMap<String, Double>> meanVarVarMap = getMeanVarVarMap(firstVarVarMap, secondVarVarMap);
-
-        HashMap<String, String> varMatches = getMatches(meanVarVarMap);
-
-        Node.variableMatchings = varMatches;
-
-        var pathPathMaps = getPathPathMaps(firstPaths, secondPaths);
-        HashMap<Node, HashMap<Node, Map.Entry<Double, Double>>> verboseNodeNodeMap = getNodeNodeMap(pathPathMaps.getKey(), pathPathMaps.getValue());
-        HashMap<Node, HashMap<Node, Double>> nodeNodeMap = new HashMap<>();
-        for (Node node1 : verboseNodeNodeMap.keySet()) {
-            nodeNodeMap.put(node1, new HashMap<>());
-            for (Node node2 : verboseNodeNodeMap.get(node1).keySet()) {
-                // if in the "which one" comment i choose second, i should here also choose second and vice versa
-//                nodeNodeMap.get(node1).put(node2, -Math.log(verboseNodeNodeMap.get(node1).get(node2).getKey()));
-                nodeNodeMap.get(node1).put(node2, 1 / verboseNodeNodeMap.get(node1).get(node2).getKey());
-            }
-        }
-
-        for (Node node1 : nodeNodeMap.keySet()) {
-            System.out.println(node1.parent + "-->" + node1);
-            for (Node node2 : nodeNodeMap.get(node1).keySet())
-                System.out.println("\t\t" + node2.parent + "-->" + node2 + " ==>  " + nodeNodeMap.get(node1).get(node2));
-        }
 
 //         this is not the best option i have. in fact this is not good at all for nodes. CHANGE IT
+        var nodeNodeMap = getNodeNodeMap(p1, p2);
         HashMap<Node, Node> nodeMatches = getMatches(nodeNodeMap);
 
-        int styleIndex = 0;
-        Field[] styleFields = StyledPrinter.class.getFields();
-        for (Node node1 : nodeMatches.keySet())
-            try {
-                styleIndex %= styleFields.length;
-                while ("RESET".equals(styleFields[styleIndex].getName()) || styleFields[styleIndex].getName().contains("WHITE") || styleFields[styleIndex].getName().contains("BLACK"))
-                    styleIndex = (styleIndex + 1) % styleFields.length;
-                node1.styleCode = (String) styleFields[styleIndex].get(null);
-                nodeMatches.get(node1).styleCode = node1.styleCode;
-                styleIndex++;
-            } catch (IllegalAccessException e) {
-                throw new RuntimeException();
-            }
+        printStyledPrograms(nodeMatches, p1, p2);
 
-        System.out.println();
-        System.out.println(p1.toStyledString(""));
-        System.out.println();
-        System.out.println(p2.toStyledString(""));
+        List<ActionGenerator.Action> actions = ActionGenerator.generate(p1, p2, nodeMatches);
+        for (ActionGenerator.Action action : actions)
+            System.out.println(action);
 
-        System.out.println(nodeNodeMap.get(p1).get(p2));
+        return nodeNodeMap;
     }
 
     private static void testPathMatching(List<Node.PathElement> p1, List<Node.PathElement> p2) {
         SequenceDistanceCalculator.Matching<Node.PathElement> matching = SequenceDistanceCalculator.calculate(p1, p2, Node::getPenalty);
         for (var match : matching.matching)
-            System.out.println(match.getKey() + "-->" + match.getValue());
+            System.out.println(match.getFirst() + "-->" + match.getSecond());
     }
 
-    public static void main(String[] args) throws FileNotFoundException {
-        Node p1 = readFile("9.java");
-        Node p2 = readFile("10.java");
+    private static void testEditNode(Node p1, Node pp1, Node p2) {
+        editNode(p1, pp1, p2);
+        System.out.println(p2.toStyledString(""));
+    }
+
+    static class MethodStruct {
+        public File file;
+        public int startPos;
+        public int endPos;
+        public Node root;
+
+        public MethodStruct(File file, int startPos, int endPos, Node root) {
+            this.file = file;
+            this.startPos = startPos;
+            this.endPos = endPos;
+            this.root = root;
+        }
+    }
+
+    private static List<MethodStruct> getMethods(File file) throws FileNotFoundException {
+        System.out.println("started getting methods of " + file.getName());
+
+        List<MethodStruct> result = new ArrayList<>();
+
+        Scanner scan = new Scanner(file);
+        scan.useDelimiter("\\Z");
+        String content = scan.next();
+        scan.close();
+
+        CtClass<?> clazz;
+        try {
+            clazz = Launcher.parseClass(content);
+        } catch (RuntimeException ex) {
+            System.out.println("error in file " + file.getName() + " because of \"" + ex.getMessage() + "\"");
+            return result;
+        }
+        for (CtMethod<?> method : clazz.getMethods()) {
+            try {
+                Node methodBlock = new NodeConverter().element(method.getBody()).get(0);
+                if (methodBlock.count() >= 30)
+                    result.add(new MethodStruct(file, method.getPosition().getLine(), method.getPosition().getEndLine(), methodBlock));
+            } catch (RuntimeException exception) {
+                System.out.println("error in method " + method.getSimpleName() + " because of \"" + exception.getMessage() + "\"");
+            }
+        }
+
+        return result;
+    }
+
+    private static void addToMethods(File folder, List<MethodStruct> methods) throws FileNotFoundException {
+        for (File file : folder.listFiles())
+            if (file.isDirectory())
+                addToMethods(file, methods);
+            else if (file.getName().endsWith(".java")) {
+                methods.addAll(getMethods(file));
+                System.out.println("number of successfully detected methods: " + methods.size());
+            }
+    }
+
+    private static void findClones(String folderName, String outputFileName) throws IOException {
+        PrintWriter writer = new PrintWriter(outputFileName, "UTF-8");
+
+        List<MethodStruct> methods = new ArrayList<>();
+        addToMethods(new File(folderName), methods);
+
+        for (int i = 0; i < methods.size(); i++) {
+            System.out.println("started comparing " + methods.get(i).file.getName());
+            for (int j = i + 1; j < methods.size(); j++) {
+                HashMap<Node, HashMap<Node, Double>> nodeNodeMap;
+                try {
+                    Node.variableMatchings = null;
+                    nodeNodeMap = testGetNodeNodeMap(methods.get(i).root, methods.get(j).root);
+                } catch (RuntimeException ex) {
+                    continue;
+                }
+                double score = nodeNodeMap.get(methods.get(i).root).get(methods.get(j).root);
+                if (score <= 5) {
+                    writer.println(methods.get(i).file.getParentFile().getName() + "," + methods.get(i).file.getName() + "," +
+                            methods.get(i).startPos + "," + methods.get(i).endPos + "," +
+                            methods.get(j).file.getParentFile().getName() + "," + methods.get(j).file.getName() + "," +
+                            methods.get(j).startPos + "," + methods.get(j).endPos + "," + score);
+
+//                      this is not the best option i have. in fact this is not good at all for nodes. CHANGE IT
+                    HashMap<Node, Node> nodeMatches = getMatches(nodeNodeMap);
+
+                    for (var var1 : Node.variableMatchings.keySet())
+                        System.out.println(var1 + " ==>  " + Node.variableMatchings.get(var1));
+                    System.out.println(methods.get(i).file.getName() + "," + methods.get(i).startPos + "," + methods.get(i).endPos);
+                    System.out.println(methods.get(j).file.getName() + "," + methods.get(j).startPos + "," + methods.get(j).endPos);
+
+                    methods.get(i).root.applyOnAll(x -> x.styleCode = "");
+                    methods.get(j).root.applyOnAll(x -> x.styleCode = "");
+                    printStyledPrograms(nodeMatches, methods.get(i).root, methods.get(j).root);
+
+                    System.out.println(score);
+                    System.in.read();
+                }
+            }
+        }
+
+        writer.close();
+    }
+
+    public static void main(String[] args) throws IOException {
+//        findClones("F:/Education/Research Projects/PatchMining/BigCloneEval/ijadataset/bcb_reduced/2/sample",
+//                "2.sample.csv");
+//        Node.diffMode = true;
+        Node p1 = readFile("1.java");
+        Node p2 = readFile("2.java");
+        Node pp2 = readFile("4p.java");
+
+        testGetNodeNodeMap(p1, p2);
+
 //        Node p1 = firstProgram();
 //        Node p2 = secondProgram();
 
 //        testPathMatching(p1.getAllPaths().get(2), p2.getAllPaths().get(2));
 
         // IMPORTANT: SOLVE ISSUE FOR 9 AND 10 PROGRAMS
-        testGetNodeNodeMap(p1, p2);
+//        testGetNodeNodeMap(p1, p2);
 //        testGetVarMatches(p1, p2);
 //        testGetMeanVarVarMap(p1, p2);
 //        testNodeConverter(readFile("3.java"), thirdProgram());
+
     }
 
     private static Node readFile(String name) throws FileNotFoundException {
@@ -413,11 +755,11 @@ public class MainFormer {
         for (List<Node.PathElement> path : paths)
             System.out.println(path.size() + ": " + path);
 
-//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.ValueSource.Variable), EnumSet.of(Node.ValueSource.Literal)));
-//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.ValueSource.Variable, Node.ValueSource.Literal), EnumSet.of(Node.ValueSource.Literal)));
-//        System.out.println(Node.sourcesSimilarity(EnumSet.noneOf(Node.ValueSource.class), EnumSet.of(Node.ValueSource.Literal)));
-//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.ValueSource.Variable, Node.ValueSource.Literal), EnumSet.of(Node.ValueSource.Literal, Node.ValueSource.Input)));
-//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.ValueSource.Variable, Node.ValueSource.Literal), EnumSet.of(Node.ValueSource.Literal, Node.ValueSource.Variable)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.Source.LocalVariable), EnumSet.of(Node.Source.Literal)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.Source.LocalVariable, Node.Source.Literal), EnumSet.of(Node.Source.Literal)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.noneOf(Node.Source.class), EnumSet.of(Node.Source.Literal)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.Source.LocalVariable, Node.Source.Literal), EnumSet.of(Node.Source.Literal, Node.Source.Input)));
+//        System.out.println(Node.sourcesSimilarity(EnumSet.of(Node.Source.LocalVariable, Node.Source.Literal), EnumSet.of(Node.Source.Literal, Node.Source.LocalVariable)));
     }
 
     public static Node firstProgram() {
@@ -873,12 +1215,12 @@ public class MainFormer {
 //        Node.variableMatchings = varMatching;
 //
 //        // this should be ungreedy
-//        List<SequenceDistanceCalculator.Matching<Node.ChildRelation>> pathMatching = new ArrayList<>();
+//        List<SequenceDistanceCalculator.Matching<Node.Child>> pathMatching = new ArrayList<>();
 //        while (true) {
 //            double currentMin = Double.MAX_VALUE;
-//            SequenceDistanceCalculator.Matching<Node.ChildRelation> currentMatching = null;
-//            for (List<Node.ChildRelation> firstPath : firstPaths)
-//                for (List<Node.ChildRelation> secondPath : secondPaths) {
+//            SequenceDistanceCalculator.Matching<Node.Child> currentMatching = null;
+//            for (List<Node.Child> firstPath : firstPaths)
+//                for (List<Node.Child> secondPath : secondPaths) {
 //                    SequenceDistanceCalculator.Matching matching =
 //                            SequenceDistanceCalculator.calculate(firstPath, secondPath, Node::getPenalty);
 //                    if (pathMatching.stream().noneMatch(x -> x.seq1 == firstPath) && pathMatching.stream().noneMatch(x -> x.seq2 == secondPath) && matching.score < currentMin) {
@@ -888,11 +1230,11 @@ public class MainFormer {
 //                }
 //            if (currentMatching == null)
 //                break;
-//            pathMatching.add(currentMatching);
+//            pathMatching.selfAdd(currentMatching);
 //        }
 //
 //        for (String firstVar : varMatching.keySet())
 //            System.out.println(firstVar + ":" + varMatching.get(firstVar));
 //
-//        for (SequenceDistanceCalculator.Matching<Node.ChildRelation> matching : pathMatching)
+//        for (SequenceDistanceCalculator.Matching<Node.Child> matching : pathMatching)
 //            System.out.println(matching);

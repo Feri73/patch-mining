@@ -52,7 +52,7 @@ public class Value extends Node {
 
     @Override
     public boolean hasSameLocalVisualPattern(Node node) {
-        return super.hasSameLocalVisualPattern(node) && ((Value) node).text == text;
+        return super.hasSameLocalVisualPattern(node) && ((Value) node).text.equals(text);
     }
 
     @Override
@@ -66,8 +66,13 @@ public class Value extends Node {
     }
 
     @Override
-    protected Summary getThisSummary() {
+    public Summary getThisSummary() {
         return generateSummary(type, getSource());
+    }
+
+    @Override
+    protected void toTextual(String linePrefix, List<Text> result) {
+        result.add(new Text(this, text));
     }
 
     public enum Source {

@@ -24,7 +24,8 @@ import java.util.stream.Collectors;
 // assumption: orderinals in actions are applied without any modification "ON BEF TREE", we can not assume any order of actions from actiongenerator (e.g. first delete, then reorder, ...)
 // also another assumption is that the parent in actions is always present in the incrementally-built tree
 
-// better aproach for ordinal, maintain a list of all nodes before the added node, and when adding the new node, put it in a place after all nodes in that list which are matched in the same parent
+// better aproach for ordinal, maintain a list of all nodes before the added node, and when adding the new node, put it
+// in a place after all nodes in that list which are matched in the same parent
 
 public class Patch {
     private final Snippet snippetBef;
@@ -32,13 +33,16 @@ public class Patch {
 
     private Patch(Snippet snippetBef, Snippet snippetAft) {
         this.snippetBef = snippetBef;
-        actions = ActionGenerator.generate(snippetBef, snippetAft, Program.getNodeMatches(snippetBef, snippetAft));
+
+        actions = ActionGenerator.generate(snippetBef, snippetAft,
+                Program.getNodeMatchBetweenVersions(snippetBef, snippetAft));
     }
 
     public static Patch subtract(Snippet snippetBef, Snippet snippetAft) {
         return new Patch(snippetBef, snippetAft);
     }
 
+    // test this by setting snippetNew = snippetBef
     public Node add(Snippet snippetNew) {
         return PatchGenerator.generate(snippetNew, snippetBef, actions).toImmutable();
     }
@@ -51,6 +55,7 @@ public class Patch {
 
         private int befAftActionsCurrentIndex;
         private final List<Action> befAftActions;
+        private boolean isDone;
 
         private final Map<Variable, Variable> befNewVarMatchMap;
         private final Map<PatternNode, List<Pair<Node, Integer>>> subtreeBefNodeNewReplaceOccurances;
@@ -58,22 +63,25 @@ public class Patch {
 
         // this method should be a yield-like method
         public static MutableNode generate(Snippet snippetNew, Snippet snippetBef, List<Action> befAftActions) {
-            Queue<PatchGenerator> patchGenerators = new PriorityQueue<>();
-            patchGenerators.add(new PatchGenerator(snippetNew, snippetBef, befAftActions));
+            Queue<Pair<PatchGenerator, Double>> patchGenerators =
+                    new PriorityQueue<>(Comparator.comparing(x -> x.getSecond()));
+            patchGenerators.add(new Pair<>(new PatchGenerator(snippetNew, snippetBef, befAftActions), 0.0));
 
             while (!patchGenerators.isEmpty()) {
-                PatchGenerator generator = patchGenerators.remove();
-                generator.applyNextAction();
+                PatchGenerator generator = patchGenerators.remove().getFirst();
                 if (generator.isDone())
                     return generator.newMutableRoot;
+                patchGenerators.addAll(generator.applyNextAction());
             }
 
             return null;
         }
 
         private PatchGenerator(Snippet snippetNew, Snippet snippetBef, List<Action> befAftActions) {
-            BiMap<Variable, Variable, Double> varMatchScores = Program.getVariableMatcheScores(snippetBef, snippetNew);
-            BiMap<Node, Node, Double> nodeMatchScores = Program.getNodeMatchScores(snippetBef, snippetNew, varMatchScores);
+            BiMap<Variable, Variable, Double> varMatchScores =
+                    Program.getVariableMatcheScores(snippetBef, snippetNew, null);
+            BiMap<Node, Node, Double> nodeMatchScores =
+                    Program.getNodeMatchScores(snippetBef, snippetNew, varMatchScores);
             List<Pair<Node, Node>> nodeMatches = Program.getGreedyMatches(nodeMatchScores);
 
             befNewVarMatchMap = Program.getMatchMap(Program.getGreedyMatches(varMatchScores));
@@ -89,6 +97,7 @@ public class Patch {
 
             this.befAftActions = befAftActions;
             befAftActionsCurrentIndex = 0;
+            isDone = false;
         }
 
         private PatchGenerator(PatchGenerator initiator) {
@@ -100,9 +109,18 @@ public class Patch {
             methodNameBefNameNewReplacePatterns = initiator.methodNameBefNameNewReplacePatterns;
             befAftActions = initiator.befAftActions;
             befAftActionsCurrentIndex = initiator.befAftActionsCurrentIndex;
+            isDone = initiator.isDone;
         }
 
         private List<Pair<PatchGenerator, Double>> applyNextAction() {
+            if (befAftActionsCurrentIndex == befAftActions.size() && !isDone) {
+                isDone = true;
+                List<Pair<PatchGenerator, Double>> result = new ArrayList<>(applyNodeReplacePatterns());
+                result.addAll(applyMethodNamePatterns());
+                result.addAll(applyVariableNameMatches());
+                return result;
+            }
+
             Action action = befAftActions.get(befAftActionsCurrentIndex);
             befAftActionsCurrentIndex++;
             if (action instanceof Rename)
@@ -154,7 +172,7 @@ public class Patch {
                         .get(new PatternNode(replaceAction.getDeletedNode()), replaceAction.getNewNode())
                         .selfAdd(new Average(1, 1));
 
-            Map<PatternNode, List<Pair<Node, Integer>>> result = new HashMap<>();
+            Map<PatternNode, List<Pair<Node, Integer>>> result = new DefaultMap<>(a -> new ArrayList<>());
             for (BiMap.Entry<PatternNode, Node, Average> subtreeNodeReplaceOccurance :
                     subtreeNodeReplaceOccurances.getEntries())
                 result.get(subtreeNodeReplaceOccurance.getKey1())
@@ -169,16 +187,23 @@ public class Patch {
             MutableNode result = newMutableMap.get(befNewNodeMatchMap.get(node));
             if (result == null)
                 result = newMutableMap.get(node);
+            if (result == null)
+                result = new MutableNode(node, newMutableMap);
             return result;
         }
 
         private int convertEffectiveOrdinal(int effectiveOrdinal, Node befParent) {
+            // in case befParent is not for bef (but for aft) this algorithm does not work perfectly and it is better to
+            // work with the better aprpoach described on top of this file
+            int result = effectiveOrdinal;
+            if (!befNewNodeMatchMap.containsKey(befParent))
+                return result;
             List<Node.Child> children = befParent.getChildren();
             for (int i = 0; i < children.size() && i < effectiveOrdinal; i++)
                 if (!befNewNodeMatchMap.containsKey(children.get(i).node) ||
                         befNewNodeMatchMap.get(children.get(i).node).getParent() != befNewNodeMatchMap.get(befParent))
-                    effectiveOrdinal--;
-            return effectiveOrdinal;
+                    result--;
+            return result;
         }
 
         // maybe i can move these to action, and make action use mutable node
@@ -188,12 +213,14 @@ public class Patch {
             result.add(new Pair<>(this, 1.0));
 
             MutableNode node = newMutable(befAftAction.getNode());
-            if (node == null)
-                return result;
-            node.delete();
+
+            if (node.getMutableParent() != null)
+                node.delete();
+            // PERFORMANCE
             MutableNode nextParent = newMutable(befAftAction.getParent());
-            if (nextParent != null)
-                nextParent.addChild(node, befAftAction.getRole(), befAftAction.getEffectiveOrdinal());
+//            if (nextParent != null)
+            nextParent.addChild(node, befAftAction.getRole(),
+                    convertEffectiveOrdinal(befAftAction.getEffectiveOrdinal(), befAftAction.getParent()));
 
             return result;
         }
@@ -207,8 +234,10 @@ public class Patch {
             result.add(new Pair<>(this, 1.0));
 
             MutableNode nextParent = newMutable(befAftAction.getParent());
-            if (nextParent != null)
-                nextParent.addChild(befAftAction.getNode(), befAftAction.getRole(), befAftAction.getEffectiveOrdinal());
+            // PERFORMANCE
+//            if (nextParent != null)
+            nextParent.addChild(befAftAction.getNode(), befAftAction.getRole(),
+                    convertEffectiveOrdinal(befAftAction.getEffectiveOrdinal(), befAftAction.getParent()));
 
             return result;
         }
@@ -217,8 +246,10 @@ public class Patch {
             List<Pair<PatchGenerator, Double>> result = new ArrayList<>();
             result.add(new Pair<>(this, 1.0));
 
+            // PERFORMANCE
             MutableNode newDeletedNode = newMutable(befAftAction.getDeletedNode());
-            if (newDeletedNode != null)
+//            if (newDeletedNode != null)
+            if (newDeletedNode.getMutableParent() != null)
                 newDeletedNode.delete();
 
             return result;
@@ -228,10 +259,10 @@ public class Patch {
             List<Pair<PatchGenerator, Double>> result = new ArrayList<>();
             result.add(new Pair<>(this, 1.0));
 
+            // PERFORMANCE
             MutableNode newDeletedNode = newMutable(befAftAction.getDeletedNode());
-            if (newDeletedNode == null)
-                return result;
-
+//            if (newDeletedNode == null)
+//                return result;
             newDeletedNode.replace(befAftAction.getNewNode());
 
             return result;
@@ -268,7 +299,7 @@ public class Patch {
         }
 
         private boolean isDone() {
-            return befAftActionsCurrentIndex == befAftActions.size();
+            return isDone;
         }
 
         // this shoule be more complicated. if a variable exists in aft but not in bef, it should be retained in newPatch.
@@ -276,7 +307,7 @@ public class Patch {
         private List<Pair<PatchGenerator, Double>> applyVariableNameMatches() {
             bfsOnNewMutable(next ->
             {
-                if (next.associatedNode instanceof Value || ((Value) next.associatedNode).getVariable() == null) {
+                if (next.associatedNode instanceof Value && ((Value) next.associatedNode).getVariable() != null) {
                     Variable nextVar = ((Value) next.associatedNode).getVariable();
                     if (befNewVarMatchMap.containsKey(nextVar))
                         next.variable = befNewVarMatchMap.get(nextVar);
@@ -309,6 +340,8 @@ public class Patch {
         private Variable variable;
 
         MutableNode(Node associatedNode, Map<Node, MutableNode> associationMap) {
+            if (associatedNode instanceof MutableNode)
+                throw new RuntimeException("Mutable node does not accept another mutable node.");
             this.associatedNode = associatedNode;
             this.associationMap = associationMap;
             associationMap.put(associatedNode, this);
@@ -325,8 +358,11 @@ public class Patch {
         }
 
         public void addChild(Node node, Role role, int ordinal) {
-            childrenMap.get(role).add(ordinal, new MutableNode(node, associationMap));
-            setChildrenParent();
+            MutableNode childNode = node instanceof MutableNode ? (MutableNode) node :
+                    new MutableNode(node, associationMap);
+            // is it ok?
+            childrenMap.get(role).add(Math.min(ordinal, 0), childNode);
+            childNode.parent = this;
         }
 
         public void deleteChild(MutableNode node) {
@@ -337,7 +373,8 @@ public class Patch {
         }
 
         private void removeFromAssociationMap(MutableNode node) {
-            for (Map.Entry<Node, MutableNode> entry : associationMap.entrySet())
+            // PERFORMANCE
+            for (Map.Entry<Node, MutableNode> entry : new HashSet<>(associationMap.entrySet()))
                 if (entry.getValue() == node)
                     // PERFORMANCE : ADD A BREAK
                     associationMap.remove(entry.getKey());
@@ -358,8 +395,9 @@ public class Patch {
                     break;
                 }
 
+            MutableNode parent = getMutableParent();
             delete();
-            addChild(node, role, ordinal);
+            parent.addChild(node, role, ordinal);
         }
 
         public MutableNode getMutableParent() {
@@ -371,7 +409,12 @@ public class Patch {
             return childrenMap.entrySet().stream()
                     .collect(() -> new ArrayList<>(), (a, b) -> a.addAll(
                             b.getValue().stream().map(x -> new Child(x, b.getKey())).collect(Collectors.toList())),
-                            null);
+                            (a, b) -> a.addAll(b));
+        }
+
+        @Override
+        protected void toTextual(String linePrefix, List<Text> result) {
+
         }
 
         public Role getRole() {
@@ -391,12 +434,19 @@ public class Patch {
                     leftIndex = 0;
                 else
                     leftIndex = 1;
-                try {
-                    return (Node) associatedNode.getClass().getConstructors()[0]
-                            .newInstance(childrenMap.get(Role.Operand).get(leftIndex).toImmutable(),
-                                    childrenMap.get(Role.Operand).get(1 - leftIndex).toImmutable());
-                } catch (InstantiationException | InvocationTargetException | IllegalAccessException ignored) {
-                }
+                Node leftOperand = null;
+                Node rightOperand = null;
+                if (leftIndex < childrenMap.get(Role.Operand).size())
+                    leftOperand = childrenMap.get(Role.Operand).get(leftIndex).toImmutable();
+                if (1 - leftIndex < childrenMap.get(Role.Operand).size())
+                    rightOperand = childrenMap.get(Role.Operand).get(1 - leftIndex).toImmutable();
+                if (associatedNode instanceof ArithmeticOperator)
+                    return new ArithmeticOperator(operator.getName(),
+                            operator.getType(), leftOperand, rightOperand);
+                if (associatedNode instanceof BooleanOperator)
+                    return new BooleanOperator(operator.getName(), leftOperand, rightOperand);
+                if (associatedNode instanceof CompareOperator)
+                    return new CompareOperator(operator.getName(), leftOperand, rightOperand);
             }
             if (associatedNode instanceof Assignment)
                 return new Assignment(childrenMap.get(Role.Assigner).get(0).toImmutable(),
@@ -411,9 +461,10 @@ public class Patch {
                     thenIndex = 0;
                 else
                     thenIndex = 1;
-                return new Branch(childrenMap.get(Role.Condition).get(0),
+                return new Branch(childrenMap.get(Role.Condition).get(0).toImmutable(),
                         (Block) childrenMap.get(Role.Body).get(thenIndex).toImmutable(),
-                        (Block) childrenMap.get(Role.Body).get(1 - thenIndex).toImmutable());
+                        childrenMap.get(Role.Body).size() == 1 ? null :
+                                (Block) childrenMap.get(Role.Body).get(1 - thenIndex).toImmutable());
             }
             if (associatedNode instanceof Break)
                 return new Break();
@@ -426,7 +477,8 @@ public class Patch {
                 MethodCall methodCall = (MethodCall) associatedNode;
                 String name = methodName == null ? methodCall.getName() : methodName;
                 return new MethodCall(name, methodCall.getKind(), methodCall.getType(),
-                        childrenMap.get(Role.MethodCaller).get(0).toImmutable(),
+                        childrenMap.get(Role.MethodCaller).isEmpty() ? null :
+                                childrenMap.get(Role.MethodCaller).get(0).toImmutable(),
                         (ArgumentsBlock) childrenMap.get(Role.MethodArgumentsBlock).get(0).toImmutable());
             }
             if (associatedNode instanceof Value) {
@@ -436,7 +488,7 @@ public class Patch {
                     return new Value(value.getType(), value.getText());
                 return new Value(var);
             }
-            throw new RuntimeException("Unsupprted Type");
+            throw new RuntimeException("Unsupported Type");
         }
     }
 

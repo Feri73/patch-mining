@@ -54,7 +54,7 @@ public class MethodCall extends Node {
 
     @Override
     public boolean hasSameLocalVisualPattern(Node node) {
-        return super.hasSameLocalVisualPattern(node) && ((MethodCall) node).name == name;
+        return super.hasSameLocalVisualPattern(node) && ((MethodCall) node).name.equals(name);
     }
 
     @Override
@@ -65,8 +65,23 @@ public class MethodCall extends Node {
     }
 
     @Override
-    protected Summary getThisSummary() {
+    public Summary getThisSummary() {
         return generateSummary(type, null);
+    }
+
+    @Override
+    protected void toTextual(String linePrefix, List<Text> result) {
+        if (caller != null)
+            caller.toTextual(linePrefix + '\t', result);
+        if ("[]".equals(name)) {
+            result.add(new Text(this, "["));
+            argumentsBlock.toTextual(linePrefix + '\t', result);
+            result.add(new Text(this, "]"));
+        } else {
+            result.add(new Text(this, (caller == null ? "" : ".") + name + '('));
+            argumentsBlock.toTextual(linePrefix + '\t', result);
+            result.add(new Text(this, ")"));
+        }
     }
 
     public enum Kind {

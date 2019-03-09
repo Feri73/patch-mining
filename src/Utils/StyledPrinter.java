@@ -73,6 +73,9 @@ public class StyledPrinter {
     public static final String CYAN_BOLD_BRIGHT = "\033[1;96m";  // CYAN
     public static final String WHITE_BOLD_BRIGHT = "\033[1;97m"; // WHITE
 
+    private StyledPrinter() {
+    }
+
     public static String applyStyle(String styleCode, String txt) {
         return styleCode + txt + RESET;
     }

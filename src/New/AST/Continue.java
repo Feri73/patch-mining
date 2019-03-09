@@ -11,4 +11,9 @@ public class Continue extends Node {
     public List<Child> getChildren() {
         return List.of();
     }
+
+    @Override
+    protected void toTextual(String linePrefix, List<Text> result) {
+        result.add(new Text(this, "continue"));
+    }
 }

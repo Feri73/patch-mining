@@ -1,22 +1,23 @@
 package New;
 
-import New.AST.*;
+import New.AST.Node;
+import New.AST.Path;
 import New.AST.SnippetConverter.Snippet;
-import Seq.SequenceDistanceCalculator.Matching;
+import New.AST.Value;
+import New.AST.Variable;
 import Seq.SequenceDistanceCalculator;
+import Seq.SequenceDistanceCalculator.Matching;
 import Utils.Average;
 import Utils.BiMap;
 import Utils.Pair;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 // test this
 public class Program {
 
+    // for both node and variable matching use th eiterative approach (test it at least)
     private final BiMap<Variable, Variable, Double> variableMatchScores;
 
     private Program() {
@@ -24,7 +25,10 @@ public class Program {
     }
 
     private Program(BiMap<Variable, Variable, Double> variableMatchScores) {
-        this.variableMatchScores = new BiMap<>(variableMatchScores);
+        if (variableMatchScores == null)
+            this.variableMatchScores = null;
+        else
+            this.variableMatchScores = new BiMap<>(variableMatchScores);
     }
 
     private static boolean isVariable(Node node) {
@@ -37,18 +41,12 @@ public class Program {
     }
 
     private BiMap<Path, Path, Matching<Path.Element>>
-    getPath1Path2Matchings(List<Path> paths1, List<Path> paths2) {
-        BiMap<Path, Path, SequenceDistanceCalculator.Matching<Path.Element>> result =
-                new BiMap<>((p, s) -> null);
+    getPath1Path2Matchings(Collection<Path> paths1, Collection<Path> paths2) {
+        BiMap<Path, Path, SequenceDistanceCalculator.Matching<Path.Element>> result = new BiMap<>();
 
         for (Path path1 : paths1)
-            for (Path path2 : paths2) {
-                Path.Element var1 = pathLast(path1);
-                Path.Element var2 = pathLast(path2);
-
-                if (isVariable(var1.node) && isVariable(var2.node))
-                    result.put(path1, path2, getSequenceMatching(path1, path2));
-            }
+            for (Path path2 : paths2)
+                result.put(path1, path2, getSequenceMatching(path1, path2));
 
         return result;
     }
@@ -62,7 +60,8 @@ public class Program {
             Pair<T, T> currentMatching = null;
 
             for (BiMap.Entry<T, T, Double> t1T2Score : t1T2Scores.getEntries())
-                if (!matches.containsKey(t1T2Score.getKey1()) && !matches.containsKey(t1T2Score.getKey2())
+                // PERFORMANCE: CONTAINS_VALUE
+                if (!matches.containsKey(t1T2Score.getKey1()) && !matches.containsValue(t1T2Score.getKey2())
                         && t1T2Score.getValue() < currentMin) {
                     currentMin = t1T2Score.getValue();
                     currentMatching = new Pair<>(t1T2Score.getKey1(), t1T2Score.getKey2());
@@ -80,7 +79,7 @@ public class Program {
         return matches.stream().collect(() -> new HashMap<T, T>(), (a, b) -> {
             a.put(b.getFirst(), b.getSecond());
             a.put(b.getSecond(), b.getFirst());
-        }, null);
+        }, (a, b) -> a.putAll(b));
     }
 
     private BiMap<Path, Path, Double>
@@ -88,23 +87,24 @@ public class Program {
         BiMap<Path, Path, Double> result = new BiMap<>();
 
         // to force that the two variables match, I exclude the last
-        List<Path> partPaths1 = paths1.stream().map(x -> new Path(x.subList(0, x.size() - 1)))
-                .collect(Collectors.toList());
-        List<Path> partPaths2 = paths2.stream().map(x -> new Path(x.subList(0, x.size() - 1)))
-                .collect(Collectors.toList());
+        Map<Path, Path> partPaths1 = paths1.stream()
+                .collect(Collectors.toMap(x -> new Path(x.subList(0, x.size() - 1)), x -> x));
+        Map<Path, Path> partPaths2 = paths2.stream()
+                .collect(Collectors.toMap(x -> new Path(x.subList(0, x.size() - 1)), x -> x));
 
         BiMap<Path, Path, Matching<Path.Element>> partPath1Path2Matchings =
-                getPath1Path2Matchings(partPaths1, partPaths2);
+                getPath1Path2Matchings(partPaths1.keySet(), partPaths2.keySet());
         for (BiMap.Entry<Path, Path, Matching<Path.Element>> partPath1Path2Matching
                 : partPath1Path2Matchings.getEntries()) {
-            Path path1 = partPath1Path2Matching.getKey1();
-            Path path2 = partPath1Path2Matching.getKey2();
+            Path path1 = partPaths1.get(partPath1Path2Matching.getKey1());
+            Path path2 = partPaths2.get(partPath1Path2Matching.getKey2());
 
             Path.Element var1 = pathLast(path1);
             Path.Element var2 = pathLast(path2);
 
-            result.put(path1, path2,
-                    combineMatchingScores(partPath1Path2Matching.getValue().score, getPenalty(var1, var2)));
+            if (isVariable(var1.node) && isVariable(var2.node))
+                result.put(path1, path2,
+                        combineMatchingScores(partPath1Path2Matching.getValue().score, getPenalty(var1, var2)));
         }
 
         return result;
@@ -150,7 +150,7 @@ public class Program {
 
         for (Variable var1 : pathVar1Var2Scores.getKeys1())
             for (Variable var2 : pathVar2Var1Scores.getKeys1()) {
-                Double score = pathVar1Var2Scores.get(var2, var2).add(pathVar2Var1Scores.get(var1, var2)).getValue();
+                Double score = pathVar1Var2Scores.get(var1, var2).add(pathVar2Var1Scores.get(var2, var1)).getValue();
                 if (!score.isNaN())
                     result.put(var1, var2, score);
             }
@@ -158,20 +158,22 @@ public class Program {
         return result;
     }
 
-    public static BiMap<Variable, Variable, Double> getVariableMatcheScores(Snippet snippetP, Snippet snippetQ) {
+    public static BiMap<Variable, Variable, Double>
+    getVariableMatcheScores(Snippet snippetP, Snippet snippetQ, BiMap<Variable, Variable, Double> varMatchScores) {
         // PERFORMANCE (FOR MATCHING NODES I ALSO USE THESE PATHS)
         List<Path> pathsP = snippetP.getRoot().getPaths(Node.Role.Root);
         List<Path> pathsQ = snippetQ.getRoot().getPaths(Node.Role.Root);
 
-        BiMap<Path, Path, Double> partPathPPathQScores = new Program().getPartPath1Path2Scores(pathsP, pathsQ);
+        BiMap<Path, Path, Double> partPathPPathQScores =
+                new Program(varMatchScores).getPartPath1Path2Scores(pathsP, pathsQ);
 
         BiMap<Path, Variable, Double> pathPVarQScores = getPath1Var2Scores(partPathPPathQScores);
         BiMap<Path, Variable, Double> pathQVarPScores = getPath1Var2Scores(partPathPPathQScores.getSwapped());
 
         BiMap<Variable, Variable, Average> pathVarPVarQScores =
-                getPathVar1Var2Scores(pathPVarQScores, snippetP.getVariables());
+                getPathVar1Var2Scores(pathPVarQScores, snippetQ.getVariables());
         BiMap<Variable, Variable, Average> pathVarQVarPScores =
-                getPathVar1Var2Scores(pathQVarPScores, snippetQ.getVariables());
+                getPathVar1Var2Scores(pathQVarPScores, snippetP.getVariables());
 
         return getVar1Var2Scores(pathVarPVarQScores, pathVarQVarPScores);
     }
@@ -189,7 +191,6 @@ public class Program {
             for (Pair<Path.Element, Path.Element> tmpMatch : matching.matching) {
                 if (match == tmpMatch || tmpMatch.getSecond() == null)
                     continue;
-
                 Node node2P = tmpMatch.getSecond().node;
                 result.put(node1, node2P, new Average(0, 1 + score));
             }
@@ -225,15 +226,28 @@ public class Program {
                         snippetQ.getRoot().getPaths(Node.Role.Root))
                 .getEntries().stream()
                 .collect(() -> new BiMap<>(), (a, b) -> a.put(b.getKey1(), b.getKey2(),
-                        1.0 / b.getValue().getValue()), null);
+                        1.0 / b.getValue().getValue()), (a, b) -> a.putAll(b));
     }
 
     public static List<Pair<Node, Node>> getNodeMatches(Snippet snippetP, Snippet snippetQ) {
-        return getGreedyMatches(getNodeMatchScores(snippetP, snippetQ, getVariableMatcheScores(snippetP, snippetQ)));
+        return getGreedyMatches(getNodeMatchScores(snippetP, snippetQ,
+                getVariableMatcheScores(snippetP, snippetQ, null)));
+    }
+
+    public static List<Pair<Node, Node>> getNodeMatchBetweenVersions(Snippet snippetBef, Snippet snippetAft) {
+        BiMap<Variable, Variable, Double> varMatchScores =
+                new BiMap<>((a, b) -> a.getName().equals(b.getName()) &&
+                        a.getKind() == b.getKind() &&
+                        a.getType() == b.getType() ? 0.0 : 1.0);
+        return getGreedyMatches(getNodeMatchScores(snippetBef, snippetAft,
+                getVariableMatcheScores(snippetBef, snippetAft, varMatchScores)));
     }
 
     private double getPenalty(Path.Element element1, Path.Element element2) {
-        return -Math.log(new Penalty(variableMatchScores).getPenalty(element1, element2));
+        double penalty = new Penalty(variableMatchScores).getPenalty(element1, element2);
+        if (penalty == 1.0)
+            penalty -= .0001;
+        return -Math.log(penalty);
     }
 
     // two asusmptions about the score the returned in matching:
@@ -242,8 +256,8 @@ public class Program {
     private Matching<Path.Element> getSequenceMatching(Path path1, Path path2) {
         SequenceDistanceCalculator.Matching<Path.Element> matching =
                 SequenceDistanceCalculator.calculate(path1, path2, this::getPenalty);
-        // is 1/l the best option i have (e.g. think about why we do not average the sequence elements alignment scores and instead selfAdd them? does it mean that we do not need length normalization at all here?). also shouldn't i selfAdd 1/l in sequence alignment algorithm instead of here?
-        matching.score += 1.0 / Double.max(path1.size(), path2.size());
+        // is 1/l the best option i have (e.g. think about why we do not average the sequence elements alignment scores and instead add them? does it mean that we do not need length normalization at all here?). also shouldn't i add 1/l in sequence alignment algorithm instead of here?
+        matching.score /= path1.size() + path2.size();
         return matching;
     }
 

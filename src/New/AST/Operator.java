@@ -58,7 +58,18 @@ public abstract class Operator extends Node {
     }
 
     @Override
-    protected Summary getThisSummary() {
+    public Summary getThisSummary() {
         return generateSummary(type, null);
+    }
+
+    @Override
+    protected void toTextual(String linePrefix, List<Text> result) {
+        if (lefOperand == null) {
+            result.add(new Text(this, name + ' '));
+        } else {
+            lefOperand.toTextual(linePrefix + '\t', result);
+            result.add(new Text(this, ' ' + name + ' '));
+        }
+        rightOperand.toTextual(linePrefix + '\t', result);
     }
 }

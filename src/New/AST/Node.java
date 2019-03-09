@@ -1,9 +1,6 @@
 package New.AST;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 // node here is immutable (practically)
 public abstract class Node {
@@ -74,6 +71,14 @@ public abstract class Node {
         return paths;
     }
 
+    public final List<Text> toTextual(String linePrefix) {
+        List<Text> result = new ArrayList<>();
+        toTextual(linePrefix, result);
+        return result;
+    }
+
+    protected abstract void toTextual(String linePrefix, List<Text> result);
+
     // do not forget to override this
     public boolean hasSameLocalVisualPattern(Node node) {
         return node.getClass() == getClass();
@@ -81,7 +86,9 @@ public abstract class Node {
 
     // do not forget to override this
     public List<Object> getLocalBehavioralPatternValues() {
-        return List.of(getClass());
+        List<Object> result = new ArrayList<>();
+        result.add(getClass());
+        return result;
     }
 
     // i should clean these classes to not have public fields
@@ -130,9 +137,9 @@ public abstract class Node {
         private final Set<Value.Source> nodeSources;
 
         public Summary() {
-            nodeClasses = Set.of();
-            nodeTypes = Set.of();
-            nodeSources = Set.of();
+            nodeClasses = new HashSet<>();
+            nodeTypes = EnumSet.noneOf(Type.class);
+            nodeSources = EnumSet.noneOf(Value.Source.class);
         }
 
         public Summary(Class<? extends Node> nodeClass, Type nodeType, Value.Source nodeSource) {
@@ -174,6 +181,16 @@ public abstract class Node {
             for (Summary summary : summaries)
                 result.add(summary);
             return result;
+        }
+    }
+
+    public static class Text {
+        public Node generatingNode;
+        public String value;
+
+        public Text(Node generatingNode, String value) {
+            this.generatingNode = generatingNode;
+            this.value = value;
         }
     }
 }
