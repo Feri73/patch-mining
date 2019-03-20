@@ -23,6 +23,8 @@ public class ArgumentsBlock extends Node {
 
     @Override
     protected void toTextual(String linePrefix, List<Text> result) {
+        if (arguments.isEmpty())
+            result.add(new Text(this, "<empty>"));
         for (Node argument : arguments) {
             argument.toTextual(linePrefix + '\t', result);
             result.add(new Text(this, ", "));

@@ -1,8 +1,7 @@
 ﻿class Clazz {
     private void main() {
         int u;
-        // test this x = (h == k) && 5
-        x = h == k;
+        x = (h == k) && 5;
         if (x) {
             if(func(func(k)+func(x))) {
                 k = k + 1;

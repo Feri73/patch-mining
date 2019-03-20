@@ -20,6 +20,19 @@ public abstract class Operator extends Node {
         setChildrenParent();
     }
 
+    public Operator(String name, Type type, List<Node> operands) {
+        this.name = name;
+        this.type = type;
+        lefOperand = null;
+        if (operands.size() == 1)
+            rightOperand = operands.get(0);
+        else if (operands.size() == 2) {
+            lefOperand = operands.get(0);
+            rightOperand = operands.get(1);
+        } else
+            throw new RuntimeException("Operator accepts at 1 or 2 operands.");
+    }
+
     public String getName() {
         return name;
     }
@@ -45,9 +58,10 @@ public abstract class Operator extends Node {
                 new Child(rightOperand, Role.Operand));
     }
 
+    // search for == between Strings
     @Override
     public boolean hasSameLocalVisualPattern(Node node) {
-        return super.hasSameLocalVisualPattern(node) && ((Operator) node).name == name;
+        return super.hasSameLocalVisualPattern(node) && ((Operator) node).name.equals(name);
     }
 
     @Override
@@ -59,7 +73,7 @@ public abstract class Operator extends Node {
 
     @Override
     public Summary getThisSummary() {
-        return generateSummary(type, null);
+        return generateSummary(type, null, null);
     }
 
     @Override

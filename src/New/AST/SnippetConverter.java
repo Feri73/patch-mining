@@ -26,7 +26,7 @@ public class SnippetConverter {
         variablesMap = new HashMap<>();
     }
 
-    public Snippet convertSnippet(File file, String methodName) throws FileNotFoundException {
+    public Snippet convertToSnippet(File file, String methodName) throws FileNotFoundException {
         Scanner scan = new Scanner(file);
         scan.useDelimiter("\\Z");
         String content = scan.next();
@@ -100,6 +100,8 @@ public class SnippetConverter {
             return Collections.singletonList(elementBlock((CtBlock<?>) element));
         else if (element instanceof CtContinue)
             return Collections.singletonList(elementContinue((CtContinue) element));
+        else if (element instanceof CtBreak)
+            return Collections.singletonList(elementBreak((CtBreak) element));
         else if (element instanceof CtLocalVariable<?>) {
             Node localVariable = elementLocalVariable((CtLocalVariable<?>) element);
             if (localVariable == null)
@@ -153,14 +155,12 @@ public class SnippetConverter {
 
         if (invocationElement.getTarget() instanceof CtTypeAccess<?>) {
             // getType gives void here. DO something for it :|
-            name = invocationElement.getTarget().getType().getSimpleName() + '.' +
-                    invocationElement.getExecutable().getSimpleName();
+            name = invocationElement.getTarget().toString() + '.' + invocationElement.getExecutable().getSimpleName();
             kind = MethodCall.Kind.ClassMethod;
         } else if (invocationElement.getTarget() instanceof CtExpression<?>) {
             name = invocationElement.getExecutable().getSimpleName();
             if (!(invocationElement.getTarget() instanceof CtThisAccess<?>))
                 caller = element(invocationElement.getTarget()).get(0);
-
             if (name.startsWith("get") && Character.isUpperCase(name.charAt(3)))
                 kind = MethodCall.Kind.ObjectMethod;
             else if (name.startsWith("set") && Character.isUpperCase(name.charAt(3)))
@@ -289,6 +289,7 @@ public class SnippetConverter {
             forElement.setBody(block);
         }
 
+        // do not do this. instead add clone method in node and clone the created block statements
         for (CtStatement forUpdate : forElement.getForUpdate()) {
             forUpdate.delete();
             ((CtStatementList) forElement.getBody()).addStatement(forUpdate);
@@ -338,6 +339,10 @@ public class SnippetConverter {
 
     private Node elementContinue(CtContinue continueElement) {
         return new Continue();
+    }
+
+    private Node elementBreak(CtBreak breakElement) {
+        return new Break();
     }
 
     // note that spoon has problem in detecting fieldAccess of vars that are not defined (it spots them as typeAccess)

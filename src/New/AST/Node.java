@@ -26,7 +26,7 @@ public abstract class Node {
     }
 
     public Summary getThisSummary() {
-        return generateSummary(null, null);
+        return generateSummary(null, null, null);
     }
 
     private Summary summary;
@@ -40,8 +40,8 @@ public abstract class Node {
         return summary.copy();
     }
 
-    protected Summary generateSummary(Type nodeType, Value.Source nodeSource) {
-        return new Summary(getClass(), nodeType, nodeSource);
+    protected Summary generateSummary(Type nodeType, Value.Source nodeSource, Variable nodeVariable) {
+        return new Summary(getClass(), nodeType, nodeSource, nodeVariable);
     }
 
     public List<Path> getPaths(Role role) {
@@ -135,14 +135,16 @@ public abstract class Node {
         private final Set<Class<? extends Node>> nodeClasses;
         private final Set<Type> nodeTypes;
         private final Set<Value.Source> nodeSources;
+        private final Set<Variable> nodeVariables;
 
         public Summary() {
             nodeClasses = new HashSet<>();
             nodeTypes = EnumSet.noneOf(Type.class);
             nodeSources = EnumSet.noneOf(Value.Source.class);
+            nodeVariables = new HashSet<>();
         }
 
-        public Summary(Class<? extends Node> nodeClass, Type nodeType, Value.Source nodeSource) {
+        public Summary(Class<? extends Node> nodeClass, Type nodeType, Value.Source nodeSource, Variable nodeVariable) {
             this();
             if (nodeClass != null)
                 nodeClasses.add(nodeClass);
@@ -150,6 +152,8 @@ public abstract class Node {
                 nodeTypes.add(nodeType);
             if (nodeSource != null)
                 nodeSources.add(nodeSource);
+            if (nodeVariable != null)
+                nodeVariables.add(nodeVariable);
         }
 
         public Set<Class<? extends Node>> getNodeClasses() {
@@ -164,6 +168,10 @@ public abstract class Node {
             return Collections.unmodifiableSet(nodeSources);
         }
 
+        public Set<Variable> getNodeVariables() {
+            return Collections.unmodifiableSet(nodeVariables);
+        }
+
         public Summary copy() {
             Summary summary = new Summary();
             summary.add(this);
@@ -174,6 +182,7 @@ public abstract class Node {
             nodeClasses.addAll(summary.nodeClasses);
             nodeTypes.addAll(summary.nodeTypes);
             nodeSources.addAll(summary.nodeSources);
+            nodeVariables.addAll(summary.nodeVariables);
         }
 
         public static Summary aggregate(Summary... summaries) {

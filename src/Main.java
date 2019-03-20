@@ -28,13 +28,13 @@ public final class Main {
     }
 
     private static Snippet readSnippet(String name) throws FileNotFoundException {
-        return new SnippetConverter().convertSnippet(new File(name + ".java"), "main");
+        return new SnippetConverter().convertToSnippet(new File(name + ".java"), "main");
     }
 
     private static void printStyledSnippets(Snippet snippet1, Snippet snippet2, List<Pair<Node, Node>> nodeMatches) {
         Map<Node, String> nodeStyleMap = new DefaultMap<>(a -> "");
 
-        int styleIndex = 0;
+        int styleIndex = 4;
         Field[] styleFields = Arrays.stream(StyledPrinter.class.getFields())
                 .sorted(Comparator.comparing(a -> new StringBuilder(a.getName()).reverse())).toArray(s -> new Field[s]);
         for (Pair<Node, Node> nodeMatch : nodeMatches.stream()
@@ -76,7 +76,10 @@ public final class Main {
         Snippet snippetBef = readSnippet(nBef);
         Snippet snippetAft = readSnippet(nAft);
 
-        List<Pair<Node, Node>> nodeMatches = Program.getNodeMatchBetweenVersions(snippetBef, snippetAft);
+        BiMap<Variable, Variable, Double> varMatchScores =
+                Patch.getVariableMatchScoresBetweenVersions(snippetBef, snippetAft);
+        List<Pair<Node, Node>> nodeMatches =
+                Program.getGreedyMatches(Program.getNodeMatchScores(snippetBef, snippetAft, varMatchScores));
         printStyledSnippets(snippetBef, snippetAft, nodeMatches);
     }
 
@@ -89,15 +92,11 @@ public final class Main {
     }
 
     private static void testSameProgramVariableMatching(String nBef, String nAft) throws FileNotFoundException {
-        Snippet snippet1 = readSnippet(nBef);
-        Snippet snippet2 = readSnippet(nAft);
+        Snippet snippetBef = readSnippet(nBef);
+        Snippet snippetAft = readSnippet(nAft);
 
-        BiMap<Variable, Variable, Double> varMatchScores =
-                new BiMap<>((a, b) -> a.getName().equals(b.getName())
-                        && a.getKind() == b.getKind()
-                        && a.getType() == b.getType() ? 0.0 : 1.0);
         List<Pair<Variable, Variable>> variableMatches =
-                Program.getGreedyMatches(Program.getVariableMatcheScores(snippet1, snippet2, varMatchScores));
+                Program.getGreedyMatches(Patch.getVariableMatchScoresBetweenVersions(snippetBef, snippetAft));
         for (Pair<Variable, Variable> variableMatch : variableMatches)
             System.out.println(variableMatch.getFirst().getName() + "<==>" + variableMatch.getSecond().getName());
     }
@@ -116,15 +115,22 @@ public final class Main {
         Snippet snippetBef = readSnippet(nBef);
         Snippet snippetAft = readSnippet(nAft);
 
+        BiMap<Variable, Variable, Double> varMatchScores =
+                Patch.getVariableMatchScoresBetweenVersions(snippetBef, snippetAft);
         List<Action> actions = ActionGenerator.generate(snippetBef, snippetAft,
-                Program.getNodeMatchBetweenVersions(snippetBef, snippetAft));
+                Program.getGreedyMatches(Program.getNodeMatchScores(snippetBef, snippetAft, varMatchScores)));
     }
 
     public static void main(String[] args) throws Exception {
-//        testVariableMatching("2", "2p");
-//        testNodeMatching("2", "1");
-//        testSameProramNodeMatching("2", "2p");
-        testPatchGeneration("2", "2p", "2");
+//        testVariableMatching("6", "5");
+//        testNodeMatching("10", "9");
+        testSameProramNodeMatching("10", "10p");
+
+        why when i add the doodool function, it removes the append function?
+        why in 10 vs 10p node matching the two ifs do not match?
+        even if they (the two ifs) do not match, why it gives error when creating patch for 9?
+
+//        testPatchGeneration("10", "10p", "9");
 //        testSameProgramVariableMatching("2", "2p");
 //        testActionGeneration("2", "2p");
     }

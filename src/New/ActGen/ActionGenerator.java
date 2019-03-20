@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 // better naming and packaging for all classes
 // what if we have one deletedNode to multiple deletedNode matching?
 // IMPORTANT: ANCHOR SHOULD NOT BE ONLY THE PARENT. CONSIDER THIS: P1:{A=2;X==A;} PP1:{A=2+R;X==A;} P2:{X==2} HERE BECAUSE THERE IS NO = IN P2 WE NEVER ADD +R IF WE ONLY CONSIDER PARENT AS ANCHOR
+// this does not use move actions
 public class ActionGenerator {
 
     private final Map<Node, Boolean> isBeforeNode;
@@ -48,17 +49,19 @@ public class ActionGenerator {
     private void addAdd(Node nodeAft, List<Action> result) {
         Pair<Node.Role, Integer> effectiveOridnalAft = getEffectiveOrdinalInParent(nodeAft);
 
-        for (Action action : result)
+        for (int i = 0; i < result.size(); i++) {
+            Action action = result.get(i);
             if (action instanceof Delete) {
                 Delete deleteAction = (Delete) action;
                 Pair<Node.Role, Integer> effectiveOridnalBef = getEffectiveOrdinalInParent(deleteAction.deletedNode);
                 if (getMatch(nodeAft.getParent()) == deleteAction.deletedNode.getParent() &&
                         effectiveOridnalAft.equals(effectiveOridnalBef)) {
-                    result.remove(deleteAction);
-                    result.add(new Replace(deleteAction.deletedNode, nodeAft));
+                    // this affects effectiveOrdinal (now i do not consider this effect)
+                    result.set(i, new Replace(deleteAction.deletedNode, nodeAft));
                     return;
                 }
             }
+        }
 
         Node parent = nodeAft.getParent();
         if (isMatched(nodeAft.getParent()))
@@ -71,19 +74,26 @@ public class ActionGenerator {
     private void addDelete(Node nodeBef, List<Action> result) {
         Pair<Node.Role, Integer> effectiveOridnalBef = getEffectiveOrdinalInParent(nodeBef);
 
-        for (Action action : result)
+        boolean addDelete = true;
+        for (int i = 0; i < result.size(); i++) {
+            Action action = result.get(i);
             if (action instanceof Add) {
                 Add addAction = (Add) action;
                 Pair<Node.Role, Integer> effectiveOridnalAft = getEffectiveOrdinalInParent(addAction.getNode());
                 if (getMatch(nodeBef.getParent()) == addAction.getNode().getParent() &&
                         effectiveOridnalAft.equals(effectiveOridnalBef)) {
-                    result.remove(addAction);
-                    result.add(new Replace(nodeBef, addAction.getNode()));
-                    return;
+                    // this affects effectiveOrdinal (now i do not consider this effect)
+                    result.set(i, new Replace(nodeBef, addAction.getNode()));
+                    addDelete = false;
                 }
             }
+            if (action instanceof Delete && ((Delete) action).deletedNode == nodeBef.getParent()
+                    || action instanceof Replace && ((Replace) action).getDeletedNode() == nodeBef.getParent())
+                addDelete = false;
+        }
 
-        result.add(new Delete(nodeBef));
+        if (addDelete)
+            result.add(new Delete(nodeBef));
     }
 
     private boolean isMatched(Node node) {
@@ -120,9 +130,14 @@ public class ActionGenerator {
             result.add(new Reorder(nodeBef, nodeBef.getParent(), effectiveOrdinalAft.getSecond()));
     }
 
-    private void createMove(Node nodeBef, Node nodeAft, Node parent, List<Action> result) {
+    private void addeMove(Node nodeBef, Node nodeAft, Node parent, List<Action> result) {
         Pair<Node.Role, Integer> effectiveOrdinal = getEffectiveOrdinalInParent(nodeAft);
-        result.add(new Move(nodeBef, parent, effectiveOrdinal.getFirst(), effectiveOrdinal.getSecond()));
+        // the reason i do not use move is that if i have move i will not be able to use replace patterns that are
+        // created by move+add --> e.g. new: if(a==b) - bef: x=k==h;if(x) - here i will not konw x and a==b are
+        // replaced
+        addDelete(nodeBef, result);
+        addAdd(nodeAft, result);
+//        result.add(new Move(nodeBef, parent, effectiveOrdinal.getFirst(), effectiveOrdinal.getSecond()));
     }
 
     // to test this, compare generate(p,q) with reverse(generate(q,p))
@@ -159,7 +174,7 @@ public class ActionGenerator {
 
             if (isMatched(nodeAft.getParent())) {
                 if (getMatch(nodeAft.getParent()) != nodeBef.getParent()) {
-                    createMove(nodeBef, nodeAft, getMatch(nodeAft.getParent()), result);
+                    addeMove(nodeBef, nodeAft, getMatch(nodeAft.getParent()), result);
                     processedAftNodes.add(nodeAft);
                 }
             } else if (nodeAft.getParent() != null || nodeBef.getParent() != null)
@@ -176,7 +191,7 @@ public class ActionGenerator {
             for (Node node : unprocessedAftNodes)
                 if (processedAftNodes.contains(node.getParent())) {
                     if (isMatched(node))
-                        createMove(getMatch(node), node, node.getParent(), result);
+                        addeMove(getMatch(node), node, node.getParent(), result);
                     else
                         addAdd(node, result);
                     processedAftNodes.add(node);

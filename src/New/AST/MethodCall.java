@@ -66,7 +66,7 @@ public class MethodCall extends Node {
 
     @Override
     public Summary getThisSummary() {
-        return generateSummary(type, null);
+        return generateSummary(type, null, null);
     }
 
     @Override

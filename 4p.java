@@ -5,7 +5,7 @@
                 String temp;
                 if (filenames[j].compareTo(filenames[j + 1]) > 0) {
                     temp = filenames[j];
-                    filenames[j] = filenames[j + 1];
+                    filenames[j] = filenames[j + (1 + 1)];
                     filenames[j + 1] = temp;
                 }
             }

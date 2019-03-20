@@ -67,7 +67,7 @@ public class Value extends Node {
 
     @Override
     public Summary getThisSummary() {
-        return generateSummary(type, getSource());
+        return generateSummary(type, getSource(), variable);
     }
 
     @Override

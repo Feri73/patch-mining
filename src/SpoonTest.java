@@ -1,19 +1,34 @@
 import AST.Node;
 import spoon.Launcher;
+import spoon.reflect.code.CtBlock;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtElement;
+import spoon.reflect.declaration.CtMethod;
+import spoon.reflect.declaration.CtVariable;
+import spoon.reflect.reference.CtVariableReference;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.HashMap;
+import java.util.Scanner;
 
 public class SpoonTest {
-    public static void main(String[] args) {
-//        CtClass<?> l = Launcher.parseClass("class A { int foo;void m(int k) { int[] x;t*=6;String uu=\"\";x=Salam.boogh(c,x[0],k,uu.length,this.foo,x.lengths,jj.getIt());} }");
-//        CtClass<?> l = Launcher.parseClass("class Clazz { int salam;void m(int k) { if(tt)salam=2+3.5;} }");
-//        CtClass<?> l = Launcher.parseClass("class Clazz { int salam;void m(int k) { for(i=0,j=0;i<10;i=i+1)salam=2+3.5;} }");
-//        CtClass<?> l = Launcher.parseClass("class Clazz { void m(int k) { A a=null;int y=2;int s;s=5;} }");
-//        CtClass<?> l = Launcher.parseClass("class Clazz { static{int x=2;} void m(int k) { x=func(this.a,3);} }");
-        CtClass<?> l = Launcher.parseClass("class Clazz { void m(int k) { try(int a =2){vv();}catch(Exception){doogh();}} }");
+    public static void main(String[] args) throws FileNotFoundException {
+        generateAllNodePrograms("1.java", "main");
 
-        var map = new HashMap<CtElement, Node>();
+    }
+
+    public static void generateAllNodePrograms(String fileName, String methodName) throws FileNotFoundException {
+        Scanner scan = new Scanner(new File(fileName));
+        scan.useDelimiter("\\Z");
+        String content = scan.next();
+        scan.close();
+
+        CtClass<?> clazz = Launcher.parseClass(content);
+        CtBlock<?> block = clazz.getMethodsByName(methodName).get(0).getBody();
+    }
+
+    class MyException extends Exception{
+
     }
 }

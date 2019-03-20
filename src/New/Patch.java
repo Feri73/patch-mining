@@ -1,28 +1,23 @@
 package New;
 
 import New.AST.*;
-import New.ActGen.ActionGenerator;
-import New.ActGen.ActionGenerator.Action;
-import New.ActGen.ActionGenerator.Replace;
-import New.ActGen.ActionGenerator.Add;
-import New.ActGen.ActionGenerator.Delete;
-import New.ActGen.ActionGenerator.Move;
-import New.ActGen.ActionGenerator.Reorder;
-import New.ActGen.ActionGenerator.Rename;
 import New.AST.SnippetConverter.Snippet;
+import New.ActGen.ActionGenerator;
+import New.ActGen.ActionGenerator.*;
 import Utils.Average;
 import Utils.BiMap;
 import Utils.DefaultMap;
 import Utils.Pair;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 // search in code, everywhere i have copied a list or map (to return a field) and use unmodifiableList (or intellij suggestion in general) instead
 // assumption: orderinals in actions are applied without any modification "ON BEF TREE", we can not assume any order of actions from actiongenerator (e.g. first delete, then reorder, ...)
 // also another assumption is that the parent in actions is always present in the incrementally-built tree
+// another assumption: there is no move action
 
 // better aproach for ordinal, maintain a list of all nodes before the added node, and when adding the new node, put it
 // in a place after all nodes in that list which are matched in the same parent
@@ -30,21 +25,36 @@ import java.util.stream.Collectors;
 public class Patch {
     private final Snippet snippetBef;
     private final List<Action> actions;
+    private final Map<Variable, Variable> aftBefVarMatch;
 
     private Patch(Snippet snippetBef, Snippet snippetAft) {
         this.snippetBef = snippetBef;
 
+        BiMap<Variable, Variable, Double> varMatchScores =
+                getVariableMatchScoresBetweenVersions(snippetBef, snippetAft);
+        aftBefVarMatch = Program.getGreedyMatches(varMatchScores).stream()
+                .collect(Collectors.toMap(Pair::getSecond, Pair::getFirst));
+
         actions = ActionGenerator.generate(snippetBef, snippetAft,
-                Program.getNodeMatchBetweenVersions(snippetBef, snippetAft));
+                Program.getGreedyMatches(Program.getNodeMatchScores(snippetBef, snippetAft, varMatchScores)));
     }
 
     public static Patch subtract(Snippet snippetBef, Snippet snippetAft) {
         return new Patch(snippetBef, snippetAft);
     }
 
+    // this should not be public
+    public static BiMap<Variable, Variable, Double>
+    getVariableMatchScoresBetweenVersions(Snippet snippetBef, Snippet snippetAft) {
+        return Program.getVariableMatcheScores(snippetBef, snippetAft,
+                new BiMap<>((a, b) -> a.getName().equals(b.getName()) &&
+                        a.getKind() == b.getKind() &&
+                        a.getType() == b.getType() ? 0.0 : 1.0));
+    }
+
     // test this by setting snippetNew = snippetBef
     public Node add(Snippet snippetNew) {
-        return PatchGenerator.generate(snippetNew, snippetBef, actions).toImmutable();
+        return PatchGenerator.generate(snippetNew, snippetBef, actions, aftBefVarMatch).toImmutable();
     }
 
     // for now patch generator works in a deterministic way
@@ -53,19 +63,23 @@ public class Patch {
         private final Map<Node, MutableNode> newMutableMap;
         private final MutableNode newMutableRoot;
 
+        private final Map<Variable, Variable> aftBefVarMatch;
+
         private int befAftActionsCurrentIndex;
         private final List<Action> befAftActions;
         private boolean isDone;
 
         private final Map<Variable, Variable> befNewVarMatchMap;
-        private final Map<PatternNode, List<Pair<Node, Integer>>> subtreeBefNodeNewReplaceOccurances;
+        private final Map<PatternNode, List<Pair<Node, Double>>> subtreeBefNodeNewReplaceOccurances;
         private final Map<String, List<Pair<String, Double>>> methodNameBefNameNewReplacePatterns;
 
         // this method should be a yield-like method
-        public static MutableNode generate(Snippet snippetNew, Snippet snippetBef, List<Action> befAftActions) {
+        public static MutableNode generate(Snippet snippetNew, Snippet snippetBef,
+                                           List<Action> befAftActions, Map<Variable, Variable> aftBefVarMatch) {
             Queue<Pair<PatchGenerator, Double>> patchGenerators =
                     new PriorityQueue<>(Comparator.comparing(x -> x.getSecond()));
-            patchGenerators.add(new Pair<>(new PatchGenerator(snippetNew, snippetBef, befAftActions), 0.0));
+            patchGenerators.add(new Pair<>(
+                    new PatchGenerator(snippetNew, snippetBef, befAftActions, aftBefVarMatch), 0.0));
 
             while (!patchGenerators.isEmpty()) {
                 PatchGenerator generator = patchGenerators.remove().getFirst();
@@ -77,20 +91,21 @@ public class Patch {
             return null;
         }
 
-        private PatchGenerator(Snippet snippetNew, Snippet snippetBef, List<Action> befAftActions) {
+        private PatchGenerator(Snippet snippetNew, Snippet snippetBef,
+                               List<Action> befAftActions, Map<Variable, Variable> aftBefVarMatch) {
             BiMap<Variable, Variable, Double> varMatchScores =
                     Program.getVariableMatcheScores(snippetBef, snippetNew, null);
-            BiMap<Node, Node, Double> nodeMatchScores =
+            BiMap<Node, Node, Double> befNewNodeMatchScores =
                     Program.getNodeMatchScores(snippetBef, snippetNew, varMatchScores);
-            List<Pair<Node, Node>> nodeMatches = Program.getGreedyMatches(nodeMatchScores);
+            List<Pair<Node, Node>> befNewNodeMatches = Program.getGreedyMatches(befNewNodeMatchScores);
 
             befNewVarMatchMap = Program.getMatchMap(Program.getGreedyMatches(varMatchScores));
-            befNewNodeMatchMap = Program.getMatchMap(nodeMatches);
+            befNewNodeMatchMap = Program.getMatchMap(befNewNodeMatches);
 
-            subtreeBefNodeNewReplaceOccurances =
-                    getSubtreeBefNodeNewReplaceOccurances(snippetBef, snippetNew, nodeMatches);
+            subtreeBefNodeNewReplaceOccurances = getSubtreeBefNodeNewReplaceOccurances(snippetBef, snippetNew,
+                    befNewNodeMatches, befNewVarMatchMap);
             // maybe if I need i go with a function class instead of name
-            methodNameBefNameNewReplacePatterns = getMethodName1Name2ReplaceScores(nodeMatchScores);
+            methodNameBefNameNewReplacePatterns = getMethodName1Name2ReplaceScores(befNewNodeMatchScores);
 
             newMutableMap = new HashMap<>();
             newMutableRoot = new MutableNode(snippetNew.getRoot(), newMutableMap);
@@ -98,23 +113,28 @@ public class Patch {
             this.befAftActions = befAftActions;
             befAftActionsCurrentIndex = 0;
             isDone = false;
+
+            this.aftBefVarMatch = aftBefVarMatch;
         }
 
-        private PatchGenerator(PatchGenerator initiator) {
-            befNewNodeMatchMap = initiator.befNewNodeMatchMap;
+        private PatchGenerator(PatchGenerator initializer) {
+            befNewNodeMatchMap = initializer.befNewNodeMatchMap;
             newMutableMap = new HashMap<>();
-            newMutableRoot = new MutableNode(initiator.newMutableRoot.associatedNode, newMutableMap);
-            befNewVarMatchMap = initiator.befNewVarMatchMap;
-            subtreeBefNodeNewReplaceOccurances = initiator.subtreeBefNodeNewReplaceOccurances;
-            methodNameBefNameNewReplacePatterns = initiator.methodNameBefNameNewReplacePatterns;
-            befAftActions = initiator.befAftActions;
-            befAftActionsCurrentIndex = initiator.befAftActionsCurrentIndex;
-            isDone = initiator.isDone;
+            newMutableRoot = new MutableNode(initializer.newMutableRoot.associatedNode, newMutableMap);
+            befNewVarMatchMap = initializer.befNewVarMatchMap;
+            subtreeBefNodeNewReplaceOccurances = initializer.subtreeBefNodeNewReplaceOccurances;
+            methodNameBefNameNewReplacePatterns = initializer.methodNameBefNameNewReplacePatterns;
+            befAftActions = initializer.befAftActions;
+            befAftActionsCurrentIndex = initializer.befAftActionsCurrentIndex;
+            isDone = initializer.isDone;
+            aftBefVarMatch = initializer.aftBefVarMatch;
         }
 
         private List<Pair<PatchGenerator, Double>> applyNextAction() {
             if (befAftActionsCurrentIndex == befAftActions.size() && !isDone) {
                 isDone = true;
+                // PERFORMANCE : becaue i do this for every patchGEnerator.
+                convertMatchedAftVariablesInNewMutableNode(newMutableRoot);
                 List<Pair<PatchGenerator, Double>> result = new ArrayList<>(applyNodeReplacePatterns());
                 result.addAll(applyMethodNamePatterns());
                 result.addAll(applyVariableNameMatches());
@@ -146,39 +166,70 @@ public class Patch {
                 if (nodeMatchScore.getKey1() instanceof MethodCall && nodeMatchScore.getKey2() instanceof MethodCall)
                     methodNameReplaceScores.get(((MethodCall) nodeMatchScore.getKey1()).getName(),
                             ((MethodCall) nodeMatchScore.getKey2()).getName())
-                            .selfAdd(new Average(nodeMatchScore.getValue(), 1));
+                            .selfAdd(new Average(1 / nodeMatchScore.getValue(), 1));
 
             Map<String, List<Pair<String, Double>>> result = new DefaultMap<>(x -> new ArrayList<>());
             for (BiMap.Entry<String, String, Average> methodNameReplaceScore : methodNameReplaceScores.getEntries())
                 result.get(methodNameReplaceScore.getKey1())
                         .add(new Pair<>(methodNameReplaceScore.getKey2(),
-                                methodNameReplaceScore.getValue().getValue()));
+                                1 / methodNameReplaceScore.getValue().getValue()));
             for (Map.Entry<String, List<Pair<String, Double>>> entry : result.entrySet())
                 entry.getValue().sort(Comparator.comparing(x -> x.getSecond()));
             return result;
         }
 
-        private static Map<PatternNode, List<Pair<Node, Integer>>>
+        // this function is kina important
+        // search for all literal integers i use in my code (like the .5 in this function),
+        // and see if they are systematically chosen or ar based on my balls :|
+        private static Map<PatternNode, List<Pair<Node, Double>>>
         getSubtreeBefNodeNewReplaceOccurances(Snippet snippetBef, Snippet snippetNew,
-                                              List<Pair<Node, Node>> nodeMatches) {
+                                              List<Pair<Node, Node>> befNewNodeMatches,
+                                              Map<Variable, Variable> befNewVarMatchMap) {
+            // i should take care of literals here. because if a literal is added in the Aft program, without any match,
+            // that should be added in to the New program without any replacement of anything else.
             BiMap<PatternNode, Node, Average> subtreeNodeReplaceOccurances = new BiMap<>((a, b) -> new Average());
 
-            // this is where I limit myself to type 2 clones
-            List<Action> befNewActions = ActionGenerator.generate(snippetBef, snippetNew, nodeMatches);
-            for (Replace replaceAction :
-                    befNewActions.stream().filter(x -> x instanceof Replace)
-                            .map(x -> (Replace) x).collect(Collectors.toList()))
-                subtreeNodeReplaceOccurances
-                        .get(new PatternNode(replaceAction.getDeletedNode()), replaceAction.getNewNode())
-                        .selfAdd(new Average(1, 1));
+            Predicate<Node> shouldBePattern = a ->
+                    !(a instanceof Value)
+                            || a instanceof Value
+                            && ((Value) a).getVariable() != null
+                            && !befNewVarMatchMap.containsKey(((Value) a).getVariable());
 
-            Map<PatternNode, List<Pair<Node, Integer>>> result = new DefaultMap<>(a -> new ArrayList<>());
+            // the scores in this function should be better (e.g. based on matching score,
+            // like the scores in the function getMethodName1Name2ReplaceScores)
+
+            // this is where I limit myself to type 2 clones
+            // here is where i assume there is no move action, because i assume instead of move+add patterns
+            // (search it) i have replace+add
+            List<Action> befNewActions = ActionGenerator.generate(snippetBef, snippetNew, befNewNodeMatches);
+            for (Action action : befNewActions)
+                // search for all instanceof, and see if it is ok or should be getclass()==.class
+                // should i use Rename here or not? (as you can see i do not use currently)
+                if (action.getClass() == Replace.class) {
+                    Replace replaceAction = (Replace) action;
+                    // remove cases where a variable (not a value) is renamed to another variable
+                    // the reason i say not a value is cases like this: var g in Bef has no match and is always replaced
+                    // by literal 4 in New
+                    if (shouldBePattern.test(replaceAction.getDeletedNode()))
+                        subtreeNodeReplaceOccurances
+                                .get(new PatternNode(replaceAction.getDeletedNode()), replaceAction.getNewNode())
+                                .selfAdd(new Average(1, 1));
+                }
+
+            for (Pair<Node, Node> befNewMatch : befNewNodeMatches)
+                if (shouldBePattern.test(befNewMatch.getFirst()))
+                    subtreeNodeReplaceOccurances
+                            .get(new PatternNode(befNewMatch.getFirst()), befNewMatch.getSecond())
+                            .selfAdd(new Average(.5, 1));
+
+            Map<PatternNode, List<Pair<Node, Double>>> result = new DefaultMap<>(a -> new ArrayList<>());
             for (BiMap.Entry<PatternNode, Node, Average> subtreeNodeReplaceOccurance :
                     subtreeNodeReplaceOccurances.getEntries())
                 result.get(subtreeNodeReplaceOccurance.getKey1())
                         .add(new Pair<>(subtreeNodeReplaceOccurance.getKey2(),
-                                (int) subtreeNodeReplaceOccurance.getValue().getValue()));
-            for (Map.Entry<PatternNode, List<Pair<Node, Integer>>> entry : result.entrySet())
+                                // this is so that better values have loewr scores
+                                1 / subtreeNodeReplaceOccurance.getValue().getValue()));
+            for (Map.Entry<PatternNode, List<Pair<Node, Double>>> entry : result.entrySet())
                 entry.getValue().sort(Comparator.comparing(x -> x.getSecond()));
             return result;
         }
@@ -219,8 +270,11 @@ public class Patch {
             // PERFORMANCE
             MutableNode nextParent = newMutable(befAftAction.getParent());
 //            if (nextParent != null)
-            nextParent.addChild(node, befAftAction.getRole(),
-                    convertEffectiveOrdinal(befAftAction.getEffectiveOrdinal(), befAftAction.getParent()));
+            // this is because MutableNode constructor automatically adds
+            // all children node as well (is it ok in all scnearios?)
+            if (befNewNodeMatchMap.containsKey(nextParent.associatedNode))
+                nextParent.addChild(node, befAftAction.getRole(),
+                        convertEffectiveOrdinal(befAftAction.getEffectiveOrdinal(), befAftAction.getParent()));
 
             return result;
         }
@@ -236,8 +290,11 @@ public class Patch {
             MutableNode nextParent = newMutable(befAftAction.getParent());
             // PERFORMANCE
 //            if (nextParent != null)
-            nextParent.addChild(befAftAction.getNode(), befAftAction.getRole(),
-                    convertEffectiveOrdinal(befAftAction.getEffectiveOrdinal(), befAftAction.getParent()));
+            // this is because MutableNode constructor automatically adds
+            // all children node as well (is it ok in all scnearios?)
+            if (befNewNodeMatchMap.containsKey(nextParent.associatedNode))
+                nextParent.addChild(befAftAction.getNode(), befAftAction.getRole(),
+                        convertEffectiveOrdinal(befAftAction.getEffectiveOrdinal(), befAftAction.getParent()));
 
             return result;
         }
@@ -273,12 +330,15 @@ public class Patch {
         }
 
         private List<Pair<PatchGenerator, Double>> applyNodeReplacePatterns() {
-            bfsOnNewMutable(next -> {
-                PatternNode nextPattern = new PatternNode(next.associatedNode);
+            bfsOnNewMutableNode(newMutableRoot, next -> {
+                PatternNode nextPattern = new PatternNode(next);
                 if (subtreeBefNodeNewReplaceOccurances.containsKey(nextPattern)) {
                     // note that because a pattern can be used more than once, a node can be associated to more than
                     // one mutable node and because of that, the association map is not valid anymore after this point
-                    next.replace(subtreeBefNodeNewReplaceOccurances.get(nextPattern).get(0).getFirst());
+                    MutableNode toBeAdded = new MutableNode(
+                            subtreeBefNodeNewReplaceOccurances.get(nextPattern).get(0).getFirst(), newMutableMap);
+                    next.replace(toBeAdded);
+                    convertMatchedAftVariablesInNewMutableNode(toBeAdded);
                     return false;
                 }
                 return true;
@@ -287,7 +347,7 @@ public class Patch {
         }
 
         private List<Pair<PatchGenerator, Double>> applyMethodNamePatterns() {
-            bfsOnNewMutable(next -> {
+            bfsOnNewMutableNode(newMutableRoot, next -> {
                 if (next.associatedNode instanceof MethodCall) {
                     String nextName = ((MethodCall) next.associatedNode).getName();
                     if (methodNameBefNameNewReplacePatterns.containsKey(nextName))
@@ -302,24 +362,33 @@ public class Patch {
             return isDone;
         }
 
-        // this shoule be more complicated. if a variable exists in aft but not in bef, it should be retained in newPatch.
-        // Otherwise, it should have not been added in the first place. So i should check this in add and move actions
-        private List<Pair<PatchGenerator, Double>> applyVariableNameMatches() {
-            bfsOnNewMutable(next ->
-            {
+        private void convertMatchedAftVariablesInNewMutableNode(MutableNode newMutableNode) {
+            bfsOnNewMutableNode(newMutableNode, next -> {
                 if (next.associatedNode instanceof Value && ((Value) next.associatedNode).getVariable() != null) {
                     Variable nextVar = ((Value) next.associatedNode).getVariable();
-                    if (befNewVarMatchMap.containsKey(nextVar))
-                        next.variable = befNewVarMatchMap.get(nextVar);
+                    if (aftBefVarMatch.containsKey(nextVar))
+                        next.variable = aftBefVarMatch.get(nextVar);
                 }
+                return true;
+            });
+        }
+
+        // this shoule be more complicated. if a variable exists in aft but not in bef, it should be retained in
+        // newPatch. Otherwise, it should have not been added in the first place. So i should check this in add
+        // and move actions.
+        private List<Pair<PatchGenerator, Double>> applyVariableNameMatches() {
+            bfsOnNewMutableNode(newMutableRoot, next ->
+            {
+                if (next.variable != null && befNewVarMatchMap.containsKey(next.variable))
+                    next.variable = befNewVarMatchMap.get(next.variable);
                 return true;
             });
             return List.of(new Pair<>(this, 1.0));
         }
 
-        private void bfsOnNewMutable(Function<MutableNode, Boolean> function) {
+        private void bfsOnNewMutableNode(MutableNode newMutableNode, Function<MutableNode, Boolean> function) {
             ArrayDeque<MutableNode> newMutableNodeQueue = new ArrayDeque<>();
-            newMutableNodeQueue.push(newMutableRoot);
+            newMutableNodeQueue.push(newMutableNode);
             while (!newMutableNodeQueue.isEmpty()) {
                 MutableNode next = newMutableNodeQueue.pop();
                 if (function.apply(next))
@@ -361,7 +430,7 @@ public class Patch {
             MutableNode childNode = node instanceof MutableNode ? (MutableNode) node :
                     new MutableNode(node, associationMap);
             // is it ok?
-            childrenMap.get(role).add(Math.min(ordinal, 0), childNode);
+            childrenMap.get(role).add(Math.min(ordinal, childrenMap.get(role).size()), childNode);
             childNode.parent = this;
         }
 
@@ -421,6 +490,16 @@ public class Patch {
             return getParent().getChild(this).role;
         }
 
+        @Override
+        public List<Object> getLocalBehavioralPatternValues() {
+            // PERFORMANCE
+            List<Object> result = associatedNode.getLocalBehavioralPatternValues();
+            for (int i = 0; i < result.size(); i++)
+                if (result.get(i) instanceof Variable)
+                    result.set(i, variable);
+            return result;
+        }
+
         // assumption: there is no excessive children or roles
         public Node toImmutable() {
             if (associatedNode instanceof ArgumentsBlock)
@@ -429,24 +508,15 @@ public class Patch {
             if (associatedNode instanceof Operator) {
                 Operator operator = (Operator) associatedNode;
                 // assunption: 0 is left and 1 is right
-                int leftIndex;
-                if (childrenMap.get(Role.Operand).get(0).associatedNode == operator.getLefOperand())
-                    leftIndex = 0;
-                else
-                    leftIndex = 1;
-                Node leftOperand = null;
-                Node rightOperand = null;
-                if (leftIndex < childrenMap.get(Role.Operand).size())
-                    leftOperand = childrenMap.get(Role.Operand).get(leftIndex).toImmutable();
-                if (1 - leftIndex < childrenMap.get(Role.Operand).size())
-                    rightOperand = childrenMap.get(Role.Operand).get(1 - leftIndex).toImmutable();
+
+                List<Node> operands = childrenMap.get(Role.Operand).stream()
+                        .map(x -> x.toImmutable()).collect(Collectors.toList());
                 if (associatedNode instanceof ArithmeticOperator)
-                    return new ArithmeticOperator(operator.getName(),
-                            operator.getType(), leftOperand, rightOperand);
+                    return new ArithmeticOperator(operator.getName(), operator.getType(), operands);
                 if (associatedNode instanceof BooleanOperator)
-                    return new BooleanOperator(operator.getName(), leftOperand, rightOperand);
+                    return new BooleanOperator(operator.getName(), operands);
                 if (associatedNode instanceof CompareOperator)
-                    return new CompareOperator(operator.getName(), leftOperand, rightOperand);
+                    return new CompareOperator(operator.getName(), operands);
             }
             if (associatedNode instanceof Assignment)
                 return new Assignment(childrenMap.get(Role.Assigner).get(0).toImmutable(),
@@ -454,18 +524,12 @@ public class Patch {
             if (associatedNode instanceof Block)
                 return new Block(childrenMap.get(Role.Statement).stream()
                         .map(MutableNode::toImmutable).collect(Collectors.toList()));
-            if (associatedNode instanceof Branch) {
-                Branch branch = (Branch) associatedNode;
-                int thenIndex;
-                if (childrenMap.get(Role.Body).get(0).associatedNode == branch.getThenBody())
-                    thenIndex = 0;
-                else
-                    thenIndex = 1;
+            if (associatedNode instanceof Branch)
+                // here i am assuming then is the first child and else is the second child, which is not good.
                 return new Branch(childrenMap.get(Role.Condition).get(0).toImmutable(),
-                        (Block) childrenMap.get(Role.Body).get(thenIndex).toImmutable(),
+                        (Block) childrenMap.get(Role.Body).get(0).toImmutable(),
                         childrenMap.get(Role.Body).size() == 1 ? null :
-                                (Block) childrenMap.get(Role.Body).get(1 - thenIndex).toImmutable());
-            }
+                                (Block) childrenMap.get(Role.Body).get(1).toImmutable());
             if (associatedNode instanceof Break)
                 return new Break();
             if (associatedNode instanceof Continue)

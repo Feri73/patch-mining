@@ -14,6 +14,13 @@ import Utils.Pair;
 import java.util.*;
 import java.util.stream.Collectors;
 
+// in the paper, write that my algorithm makes sense because for two nodes to be matched, context+behavior should match
+// and context in my case is the path from root to the node and behavior is the node itself (along with all its subtree)
+// also note that my algorithm kinda is an extension of sequence alignment for tree alignment, AND the adjunct thing is
+// a part of algorithm, not part of cost function (the things considered in adjuntc are algorithm parameters, just like
+// the cost function itself, but the vert notion of using those adjunct is part of algorithm for ESTIMATING tree
+// alignment, which is brute force essentially.
+
 // test this
 public class Program {
 
@@ -52,6 +59,7 @@ public class Program {
     }
 
     // PERFORMANCE
+    // this should not be greedy
     public static <T> List<Pair<T, T>> getGreedyMatches(BiMap<T, T, Double> t1T2Scores) {
         Map<T, T> matches = new HashMap<>();
 
@@ -234,15 +242,6 @@ public class Program {
                 getVariableMatcheScores(snippetP, snippetQ, null)));
     }
 
-    public static List<Pair<Node, Node>> getNodeMatchBetweenVersions(Snippet snippetBef, Snippet snippetAft) {
-        BiMap<Variable, Variable, Double> varMatchScores =
-                new BiMap<>((a, b) -> a.getName().equals(b.getName()) &&
-                        a.getKind() == b.getKind() &&
-                        a.getType() == b.getType() ? 0.0 : 1.0);
-        return getGreedyMatches(getNodeMatchScores(snippetBef, snippetAft,
-                getVariableMatcheScores(snippetBef, snippetAft, varMatchScores)));
-    }
-
     private double getPenalty(Path.Element element1, Path.Element element2) {
         double penalty = new Penalty(variableMatchScores).getPenalty(element1, element2);
         if (penalty == 1.0)
@@ -253,6 +252,10 @@ public class Program {
     // two asusmptions about the score the returned in matching:
     // 1. less is better
     // 2. the score is in (0,inf)
+    // the assumotion that lets me use sequence matching: if node n1 and n2 are each other's true match, no ascendent of
+    // one can be true match of descendent of the other.
+    // matching score is actually matching confidence (asuming penalty function (not the one here) shows the confidence
+    // that two nodes are actual matches
     private Matching<Path.Element> getSequenceMatching(Path path1, Path path2) {
         SequenceDistanceCalculator.Matching<Path.Element> matching =
                 SequenceDistanceCalculator.calculate(path1, path2, this::getPenalty);

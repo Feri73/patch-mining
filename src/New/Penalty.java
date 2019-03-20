@@ -3,6 +3,7 @@ package New;
 import New.AST.*;
 import Utils.BiMap;
 import Utils.DefaultMap;
+import Utils.Pair;
 
 import java.util.*;
 import java.util.function.Function;
@@ -13,13 +14,14 @@ public class Penalty {
 
     private final BiMap<Variable, Variable, Double> variableMatchScores;
 
+    // the model to predict this penalty function can be conditioned on the programs!
     static {
         classPenaltyFunctionMap =
                 new DefaultMap<>(x ->
                         dot(x.pathElement1, y -> y.node.getClass()) == dot(x.pathElement2, y -> y.node.getClass())
                                 ? 1.0 : 0.0);
 
-        consider(Branch.class, null, .5);
+        consider(Branch.class, null, 1);
         consider(Branch.class, Loop.class, .1);
         consider(Branch.class, MethodCall.class, .001);
 
@@ -74,6 +76,7 @@ public class Penalty {
     }
 
     // search for int t = 1 and delete them everywhere.
+    // incorporate ordinal as well (e.g. by considering summary of before and after nodes)
     public double getPenalty(Path.Element pathElement1, Path.Element pathElement2) {
         double penalty = classPenaltyFunctionMap.get(new Element(pathElement1, pathElement2));
 
@@ -87,17 +90,23 @@ public class Penalty {
             if (!(node1 instanceof Block || node1 instanceof ArgumentsBlock)
                     || !(node2 instanceof Block || node2 instanceof ArgumentsBlock)) {
                 penalty *= summaryPenalty(node1.getThisSummary(), node2.getThisSummary(),
-                        .9, 1, 0.1);
+                        .9, 1, 0.1, 1);
                 // compute adjunct for each role (set of children for one role) and if the next element in path belong
                 // to a role, the adjunt for that role is not computed (but here instead of one adjunct we have a list
                 // of adjunct for each role)
                 penalty *= summaryPenalty(pathElement1.adjunctSummary, pathElement2.adjunctSummary,
-                        .9, 0.1, .4);
+                        .9, 0.1, .4, .6);
                 // this introduces correlation because we have both in-the-path and off-the-path values, so we include
                 // off-the-path values twice overally (because we have it alreadt in th adjunctSummary).
                 penalty *= summaryPenalty(node1.getAggregatedSummary(), node2.getAggregatedSummary(),
-                        .9, .7, .5);
+                        .9, .7, .5, .6);
             }
+
+            if (node1 instanceof Value && node2 instanceof Value
+                    && ((Value) node1).getVariable() == null
+                    && ((Value) node2).getVariable() == null
+                    && !((Value) node1).getText().equals(((Value) node2).getText()))
+                penalty *= .95;
 
             if (variableMatchScores != null
                     && node1 instanceof Value && node2 instanceof Value
@@ -111,12 +120,25 @@ public class Penalty {
         return penalty;
     }
 
-    private static double summaryPenalty(Node.Summary summary1, Node.Summary summary2,
-                                         double typeMin, double classMin, double sourceMin) {
+    private double summaryPenalty(Node.Summary summary1, Node.Summary summary2,
+                                  double typeMin, double classMin, double sourceMin, double variableMin) {
         double penalty = 1;
         penalty *= setSimilarity(summary1.getNodeTypes(), summary2.getNodeTypes()) * (1 - typeMin) + typeMin;
         penalty *= setSimilarity(summary1.getNodeClasses(), summary2.getNodeClasses()) * (1 - classMin) + classMin;
         penalty *= setSimilarity(summary1.getNodeSources(), summary2.getNodeSources()) * (1 - sourceMin) + sourceMin;
+
+        if (variableMatchScores != null) {
+            // better algorithm?
+            BiMap<Variable, Variable, Double> existingVarsMatchScores = new BiMap<>();
+            for(Variable var1 : summary1.getNodeVariables())
+                for(Variable var2 : summary2.getNodeVariables())
+                    existingVarsMatchScores.put(var1, var2, variableMatchScores.get(var1,var2));
+            Set<Variable> summary2VarMatches = new HashSet<>();
+            for (Pair<Variable, Variable> varMatch : Program.getGreedyMatches(existingVarsMatchScores))
+                if (summary2.getNodeVariables().contains(varMatch.getSecond()))
+                    summary2VarMatches.add(varMatch.getSecond());
+            penalty *= setSimilarity(summary1.getNodeVariables(), summary2VarMatches) * (1 - variableMin) + variableMin;
+        }
         return penalty;
     }
 

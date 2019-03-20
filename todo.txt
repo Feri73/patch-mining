@@ -17,10 +17,51 @@ the other root matching that has many matches
 include name method of clone detction
 
 
+test as clone detector
+
+test cases in which i delete node
+test cases in which i change a node which is not present in New program but is in Bef and Aft
 
 
+EM-Algorithm-like things for finding the similarity function (or for solving the whole proble of node matching)
+
+another way to create the cost function is this:
+for each node in program p1, if it has N nodes, genearte N methods that only contain those nodes.
+then for program p2, for each node in it, find all the clones in the created methods, and pick the best node (so we need to have score for clone pairs)
+ as its match unless it is already matched. (use that greedy algorithm i use now)
+do this on a large number of clone(does it have to be clone?) pairs.
+Then for each pair, generate all paths from root to all leaves, and if a n1 is matched to n2, increase the probability
+of them being macthed in the to-be-learned cost function, and if it is not matched, increase the skip probability. (you
+can also divide the number of occurances of matching on all number of occurances on the node, or somrthing similar)
+This may take long but at because it is done only once, and after that i do not need to do it when i run my tool it is ok.
+IF THIS ALGORITHM IS VERY GOOD, I DO NOT NEED MY ALGORITHM AT ALL! (BUT I SHOULD TAKE CARE OF ITS PRFORMANCE TOO)
 
 
+other way:
+hand label 50-100 programs and do gradient descent
+
+other way:
+mutation operators=>mutate two nodes in the same way and see if oreo detects that the two programs (not the two nodes)
+are still clones
+
+other way:
+do the algorithm i do right now, and instead of calling the penalty function, call oreo to see how likely it is for the
+two to be clones. The final result will (hopefully) tell us the true labels. ==> if this does not take that much and
+works well, maybe i do not need my penalty function and i can do this in my work itself. for null, have an empty program.
+
+another way:
+learn via clone data: we do have clone data. find matching factor between roots and then create loss based on the clone
+data and then backpropagate
+
+current idea:
+b(A,B)=l(A,B)*m(C,D) && m(C,D)=b(C,D)*f(m(A,B)/*(or maybe b(A,B))*/) ==> b(A,B)=g(l(A,B)*b(C,D))
+where C is A's child and D is B's child. Then do a memoise brute force to find out which nodes are matched
+b=behavior l=local m=match (A & B here do not have parent, if they had, it would be a little differnet)
+or a log version of these equations. For matching parent (in finding matching) use seq alignment.
+This can also be estimated through an iterative process
+
+FOR ANY OF THESE IDEAS ABOVE, PROBABLY THE SCORE ASSOCIATED TO NOT MATCHING SHOULD BE A CONSTANT NUMBER AS A PARAM
+OR HYPER-PARAM
 
 
 
