@@ -53,16 +53,27 @@ another way:
 learn via clone data: we do have clone data. find matching factor between roots and then create loss based on the clone
 data and then backpropagate
 
-current idea:
+// the assumption of this idea is that the variables are kind matched
+another idea: a better version of this is written  in page 8 of version A
 b(A,B)=l(A,B)*m(C,D) && m(C,D)=b(C,D)*f(m(A,B)/*(or maybe b(A,B))*/) ==> b(A,B)=g(l(A,B)*b(C,D))
 where C is A's child and D is B's child. Then do a memoise brute force to find out which nodes are matched
 b=behavior l=local m=match (A & B here do not have parent, if they had, it would be a little differnet)
 or a log version of these equations. For matching parent (in finding matching) use seq alignment.
 This can also be estimated through an iterative process
 
+another idea:
+somehow see if i can justify some numbers using grammar
+
+again :):
+i can also use my current idea, but with a change that the loss function is pretty simple, but the function that
+alignment uses is a combination of loss function and the previous iteration results (so an iterative process)
+
 FOR ANY OF THESE IDEAS ABOVE, PROBABLY THE SCORE ASSOCIATED TO NOT MATCHING SHOULD BE A CONSTANT NUMBER AS A PARAM
 OR HYPER-PARAM
 
+another way: (which is also very useful in the iterative setting)
+use similarity in assembly of each of the node classes (e.g. assembly of for and if is much more similary than for
+and method call) for other params (the ones for summary comparison, we can do simple hyper parameter learning methods)
 
 
 

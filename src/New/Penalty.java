@@ -10,12 +10,14 @@ import java.util.function.Function;
 
 public class Penalty {
 
-    private static final Map<Element, Double> classPenaltyFunctionMap;
+    // this should be private
+    public static final Map<Element, Double> classPenaltyFunctionMap;
 
     private final BiMap<Variable, Variable, Double> variableMatchScores;
 
     // the model to predict this penalty function can be conditioned on the programs!
     static {
+        // this considers the simple local semantics of node classes
         classPenaltyFunctionMap =
                 new DefaultMap<>(x ->
                         dot(x.pathElement1, y -> y.node.getClass()) == dot(x.pathElement2, y -> y.node.getClass())
@@ -77,6 +79,9 @@ public class Penalty {
 
     // search for int t = 1 and delete them everywhere.
     // incorporate ordinal as well (e.g. by considering summary of before and after nodes)
+    // this considers the subtree semantics, except for the path that occuurs in this session (so adjunct) (so "simple
+    // local semantics" + semantics of adjunct subtree. i can find a method to estimate any of the two (or learn their
+    // parameters), or i can estimate (or learn) this whole thing(local+adjunct) as a whole
     public double getPenalty(Path.Element pathElement1, Path.Element pathElement2) {
         double penalty = classPenaltyFunctionMap.get(new Element(pathElement1, pathElement2));
 
@@ -160,7 +165,8 @@ public class Penalty {
         classPenaltyFunctionMap.put(new Element(class1, class2), value);
     }
 
-    private static class Element {
+    // this should be private
+    public static class Element {
         private final Set<Class<?>> values;
         private final Path.Element pathElement1;
         private final Path.Element pathElement2;

@@ -21,6 +21,14 @@ public class Average {
         return weight;
     }
 
+    public void setValue(double value) {
+        this.value = value;
+    }
+
+    public void setWeight(double weight) {
+        this.weight = weight;
+    }
+
     public void selfAdd(Average average) {
         value = (value * weight + average.value * average.weight) / (weight + average.weight);
         weight += average.weight;

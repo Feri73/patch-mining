@@ -8,6 +8,7 @@ import java.util.function.BiFunction;
 
 // using this function, sequences with shorted length get more probability (is it bad at all?)
 // does this work for an arbitrary penalty function (like the one i use now)? (maybe when using selfAdd it by 1/l (l be the max length of the sequences). 1/l comes from the fact that i normally get -log(mult(prob))=sigma(-log(prob)) and i want it to be more near 1 when l is bugger so -log(mult(prob)*exp(-1/l))=sigma(-log(prob))+-(-1/l). ALSO, note that if i selfAdd this 1/l when I wanna use the result (in main.java) then it is not very good. better is if i selfAdd 1/l in the recursive process of calculating it, so if i want to match tw subsequences, I selfAdd 1/l (l be the max of the length of these subsequences).
+// use caching in this function
 public class SequenceDistanceCalculator {
     public static class Matching<T> {
         public List<Pair<T, T>> matching;
