@@ -3,6 +3,7 @@ package New;
 import New.AST.*;
 import Utils.BiMap;
 import Utils.DefaultMap;
+import Utils.General;
 import Utils.Pair;
 
 import java.util.*;
@@ -32,7 +33,7 @@ public class Penalty {
 
         consider(Block.class, null, 1);
 
-        consider(Value.class, null, .01);
+        consider(Value.class, null, 1);
         consider(Value.class, Assignment.class, .05);
         consider(Value.class, MethodCall.class, .5); // i should differentiate different kinds of methodCalls
         consider(Value.class, ArithmeticOperator.class, .3);
@@ -139,7 +140,7 @@ public class Penalty {
                 for(Variable var2 : summary2.getNodeVariables())
                     existingVarsMatchScores.put(var1, var2, variableMatchScores.get(var1,var2));
             Set<Variable> summary2VarMatches = new HashSet<>();
-            for (Pair<Variable, Variable> varMatch : Program.getGreedyMatches(existingVarsMatchScores))
+            for (Pair<Variable, Variable> varMatch : General.getGreedyMatches(existingVarsMatchScores))
                 if (summary2.getNodeVariables().contains(varMatch.getSecond()))
                     summary2VarMatches.add(varMatch.getSecond());
             penalty *= setSimilarity(summary1.getNodeVariables(), summary2VarMatches) * (1 - variableMin) + variableMin;

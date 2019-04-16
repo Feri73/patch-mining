@@ -14,7 +14,7 @@ import java.util.Scanner;
 
 public class SpoonTest {
     public static void main(String[] args) throws FileNotFoundException {
-        generateAllNodePrograms("1.java", "main");
+        generateAllNodePrograms("0.java", "main");
 
     }
 

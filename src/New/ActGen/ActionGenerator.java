@@ -2,8 +2,9 @@ package New.ActGen;
 
 import New.AST.Node;
 import New.AST.SnippetConverter.Snippet;
-import New.Program;
+//import New.Program;
 import Utils.DefaultMap;
+import Utils.General;
 import Utils.Pair;
 
 import java.util.*;
@@ -23,7 +24,7 @@ public class ActionGenerator {
 
     private ActionGenerator(Snippet snippetBef, Snippet snippetAft, List<Pair<Node, Node>> nodeMatches) {
         this.nodeMatches = new ArrayList<>(nodeMatches);
-        nodeMatchMap = Program.getMatchMap(nodeMatches);
+        nodeMatchMap = General.getMatchMap(nodeMatches);
 
         isBeforeNode = new HashMap<>();
         isBeforeNode.putAll(getAllNodes(snippetBef).stream().collect(Collectors.toMap(x -> x, x -> true)));

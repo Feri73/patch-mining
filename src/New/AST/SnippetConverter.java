@@ -26,6 +26,7 @@ public class SnippetConverter {
         variablesMap = new HashMap<>();
     }
 
+    // methodName is not a good approach, cuz many names with different signatures may exist
     public Snippet convertToSnippet(File file, String methodName) throws FileNotFoundException {
         Scanner scan = new Scanner(file);
         scan.useDelimiter("\\Z");
@@ -34,6 +35,11 @@ public class SnippetConverter {
 
         CtClass<?> clazz = Launcher.parseClass(content);
         return new Snippet(element(clazz.getMethodsByName(methodName).get(0).getBody()).get(0), getVariables());
+    }
+
+    // remove this method
+    public Snippet convertToSnippet(CtBlock<?> methodBody) throws FileNotFoundException {
+        return new Snippet(element(methodBody).get(0), getVariables());
     }
 
     private Variable getVariable(CtVariableReference<?> variableReferenceElement) {
@@ -189,7 +195,7 @@ public class SnippetConverter {
     }
 
     private Node elementBinaryOperator(CtBinaryOperator<?> binaryOperatorElement) {
-        String name = binaryOperatorElement.getKind().name(); // so, we don't have +,-,... but their names. no differnece tho
+        String name = getBinaryOperatorName(binaryOperatorElement.getKind());
         Node.Type type = convertType(binaryOperatorElement.getType());
 
         Node leftOperand = element(binaryOperatorElement.getLeftHandOperand()).get(0);
@@ -217,15 +223,15 @@ public class SnippetConverter {
             case GT: // i do NOT convert < to > (and swap the operands) because it does not make differnece for the alanysis (i do not care about the exact operator)
             case LE:
             case GE:
-                return new CompareOperator(name, leftOperand, rightOperand);
             case INSTANCEOF:
+                return new CompareOperator(name, leftOperand, rightOperand);
             default:
                 throw new UnsupportedOperationException(); // support it :|
         }
     }
 
     private Node elementUnaryOperator(CtUnaryOperator<?> unaryOperatorElement) {
-        String name = unaryOperatorElement.getKind().name(); // so, we don't have +,-,... but their names. no differnece tho
+        String name = getUnaryOperatorName(unaryOperatorElement.getKind());
         Node.Type type = convertType(unaryOperatorElement.getType());
 
         Node operand = element(unaryOperatorElement.getOperand()).get(0);
@@ -390,12 +396,12 @@ public class SnippetConverter {
 
     // maybe include other things like stringbuilder, list etc.
     private Node.Type convertType(CtTypeReference<?> type) {
+        Node.Type res = null;
         if (type == null)
-            return Node.Type.Unknown;
+            res = Node.Type.Unknown;
         if (type instanceof CtArrayTypeReference<?>) {
-            Node.Type res = Node.Type.Array;
+            res = Node.Type.Array;
             res.argument = convertType(((CtArrayTypeReference<?>) type).getComponentType());
-            return res;
         } else {
             type = type.box();
             if (type.getPackage() != null && "java.lang".equals(type.getPackage().getSimpleName()))
@@ -403,26 +409,103 @@ public class SnippetConverter {
                     case "Short":
                     case "Long":
                     case "Integer":
-                        return Node.Type.Integer;
+                        res = Node.Type.Integer;
+                        break;
                     case "Float":
                     case "Double":
-                        return Node.Type.Float;
+                        res = Node.Type.Float;
+                        break;
                     case "Boolean":
-                        return Node.Type.Boolean;
+                        res = Node.Type.Boolean;
+                        break;
                     case "String":
                     case "Character":
                     case "Byte": // is it good to have byte here?
-                        return Node.Type.String;
+                        res = Node.Type.String;
+                        break;
                     case "Void":
-                        return Node.Type.Void;
+                        res = Node.Type.Void;
+                        break;
                 }
-            if (type.getPackage() != null && type.getPackage().getSimpleName().startsWith("java"))
-                return Node.Type.JavaClass;
-            else
-                return Node.Type.OtherClass;
+            if (res == null)
+                if (type.getPackage() != null && type.getPackage().getSimpleName().startsWith("java"))
+                    res = Node.Type.JavaClass;
+                else
+                    res = Node.Type.OtherClass;
+        }
+        if (type != null)
+            res.name = type.toString();
+        return res;
+    }
+
+    private String getBinaryOperatorName(BinaryOperatorKind operatorKind) {
+        switch (operatorKind) {
+            case OR:
+                return "||";
+            case AND:
+                return "&&";
+            case BITOR:
+                return "|";
+            case BITXOR:
+                return "^";
+            case BITAND:
+                return "&";
+            case EQ:
+                return "==";
+            case NE:
+                return "!=";
+            case LT:
+                return "<";
+            case GT:
+                return ">";
+            case LE:
+                return "<=";
+            case GE:
+                return ">=";
+            case SL:
+                return "<<";
+            case SR:
+                return ">>";
+            case USR:
+                return ">>>";
+            case PLUS:
+                return "+";
+            case MINUS:
+                return "-";
+            case MUL:
+                return "*";
+            case DIV:
+                return "/";
+            case MOD:
+                return "%";
+            case INSTANCEOF:
+                return " instanceof ";
+            default:
+                throw new UnsupportedOperationException();
         }
     }
 
+    private String getUnaryOperatorName(UnaryOperatorKind operatorKind) {
+        switch (operatorKind) {
+            case POS:
+                return "+";
+            case NEG:
+                return "-";
+            case NOT:
+                return "!";
+            case COMPL:
+                return "~";
+            case PREINC:
+            case PREDEC:
+            case POSTINC:
+            case POSTDEC:
+            default:
+                throw new UnsupportedOperationException();
+        }
+    }
+
+    // i should change my design i a way that i only use snippet in my interfaces, not node (because snippet can have many
+    // good stuff in it like vars and varNodes
     public static class Snippet {
         private Node root;
         private Set<Variable> variables;

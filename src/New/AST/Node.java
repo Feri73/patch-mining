@@ -2,7 +2,7 @@ package New.AST;
 
 import java.util.*;
 
-// node here is immutable (practically)
+// node here is immutable (practically, but make it theoretically immutable as well)
 public abstract class Node {
     protected Node parent;
 
@@ -119,6 +119,13 @@ public abstract class Node {
 
         // use this in the penalty function
         public Type argument;
+        // name contains the argument
+        public String name;
+
+        @Override
+        public java.lang.String toString() {
+            return name;
+        }
     }
 
     public static class Child {

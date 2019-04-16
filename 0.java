@@ -1,5 +1,6 @@
 ﻿class Clazz {
     private void main() {
-        i = funcs(j);
+        List<Hall> h;
+        i = funcs(h);
     }
 }
